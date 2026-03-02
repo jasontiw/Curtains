@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import CurtainScene from './components/CurtainScene';
 import FabricPicker, { Fabric } from './components/FabricPicker';
-import UploadStage from './components/UploadStage';
+import UploadStage, { Point } from './components/UploadStage';
 import OverlayPreview from './components/OverlayPreview';
 
 const fabrics: Fabric[] = [
@@ -66,8 +66,8 @@ const fabrics: Fabric[] = [
 
 function App() {
   const [activeId, setActiveId] = useState<string>('sheer-soft');
-  const [compositeUrl, setCompositeUrl] = useState<string>();
   const [photoUrl, setPhotoUrl] = useState<string>();
+  const [points, setPoints] = useState<Point[]>();
 
   const activeFabric = useMemo(() => fabrics.find((f) => f.id === activeId) ?? fabrics[0], [activeId]);
 
@@ -106,9 +106,9 @@ function App() {
         </div>
       </section>
 
-      <section className="grid" style={{ marginTop: 20, gap: 18 }}>
-        <UploadStage fabric={activeFabric} onComposite={setCompositeUrl} onPhotoChange={setPhotoUrl} />
-        <OverlayPreview photoUrl={photoUrl} compositeUrl={compositeUrl} />
+      <section className="editor-grid" style={{ marginTop: 20, gap: 18 }}>
+        <UploadStage fabric={activeFabric} onPhotoChange={setPhotoUrl} onPointsChange={setPoints} />
+        <OverlayPreview photoUrl={photoUrl} points={points} fabric={activeFabric} />
       </section>
 
       <footer className="footer">

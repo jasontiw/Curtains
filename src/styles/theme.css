@@ -99,6 +99,18 @@ button {
   gap: 18px;
 }
 
+.editor-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 1fr 1.5fr;
+}
+
+@media (max-width: 900px) {
+  .editor-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .hero {
   position: relative;
   padding: 28px;
