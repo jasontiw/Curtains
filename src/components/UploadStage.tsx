@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Fabric } from './FabricPicker';
+import { detectWindowCorners, loadOpenCV } from '../utils/windowDetector';
 
 export type Point = { x: number; y: number }; // normalized 0-1
 
@@ -26,6 +27,8 @@ const UploadStage: React.FC<Props> = ({ fabric, onPhotoChange, onPointsChange })
   const [isDragging, setIsDragging] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [cameraError, setCameraError] = useState<string>();
+  const [isDetecting, setIsDetecting] = useState(false);
+  const [cvLoading, setCvLoading] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
@@ -236,6 +239,33 @@ const UploadStage: React.FC<Props> = ({ fabric, onPhotoChange, onPointsChange })
     return inside;
   }, []);
 
+  // Preload OpenCV when photo is uploaded
+  useEffect(() => {
+    if (photoImage && !cvLoading) {
+      setCvLoading(true);
+      loadOpenCV().catch(() => setCvLoading(false));
+    }
+  }, [photoImage, cvLoading]);
+
+  const handleAutoDetect = useCallback(async () => {
+    if (!photoImage || isDetecting) return;
+    
+    setIsDetecting(true);
+    try {
+      const corners = await detectWindowCorners(photoImage);
+      if (corners && corners.length === 4) {
+        setPoints(corners);
+      } else {
+        // No window detected - keep current points
+        console.log('No window detected, using manual adjustment');
+      }
+    } catch (err) {
+      console.error('Detection failed:', err);
+    } finally {
+      setIsDetecting(false);
+    }
+  }, [photoImage, isDetecting]);
+
   return (
     <div className="surface" style={{ padding: 16 }}>
       <div className="section-header">
@@ -271,6 +301,50 @@ const UploadStage: React.FC<Props> = ({ fabric, onPhotoChange, onPointsChange })
               <div className="card-copy">Usa la cámara</div>
             </button>
           </div>
+          
+          {/* Auto-detect button */}
+          {photoImage && (
+            <button
+              type="button"
+              onClick={handleAutoDetect}
+              disabled={isDetecting}
+              style={{
+                marginTop: 12,
+                width: '100%',
+                padding: '10px 16px',
+                background: isDetecting ? 'var(--muted)' : 'linear-gradient(135deg, #4d7cf5, #6b5ce7)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 10,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: isDetecting ? 'wait' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                transition: 'all 0.2s'
+              }}
+            >
+              {isDetecting ? (
+                <>
+                  <span style={{ 
+                    width: 16, 
+                    height: 16, 
+                    border: '2px solid rgba(255,255,255,0.3)',
+                    borderTopColor: '#fff',
+                    borderRadius: '50%',
+                    animation: 'spin 0.8s linear infinite'
+                  }} />
+                  Detectando ventana...
+                </>
+              ) : (
+                <>
+                  🔍 Auto-detectar ventana
+                </>
+              )}
+            </button>
+          )}
         </div>
         <div>
           {photoUrl ? (

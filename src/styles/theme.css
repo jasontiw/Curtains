@@ -295,3 +295,7 @@ button {
   background: rgba(255, 255, 255, 0.25);
   transform: scale(1.08);
 }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
