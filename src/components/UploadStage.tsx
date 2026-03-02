@@ -271,9 +271,6 @@ const UploadStage: React.FC<Props> = ({ fabric, onPhotoChange, onPointsChange })
               <div className="card-copy">Usa la cámara</div>
             </button>
           </div>
-          <div className="card-copy" style={{ marginTop: 8, textAlign: 'center' }}>
-            Marca las 4 esquinas de la ventana.
-          </div>
         </div>
         <div>
           {photoUrl ? (
