@@ -24,10 +24,14 @@ const UploadStage: React.FC<Props> = ({ fabric, onPhotoChange, onPointsChange })
   const [dragOffset, setDragOffset] = useState<Point>({ x: 0, y: 0 });
   const [dragPoly, setDragPoly] = useState<{ start: Point; points: Point[] } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const [cameraError, setCameraError] = useState<string>();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
   const pointsRef = useRef<Point[]>(points);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   pointsRef.current = points;
 
   const handleFile = useCallback(
@@ -42,6 +46,47 @@ const UploadStage: React.FC<Props> = ({ fabric, onPhotoChange, onPointsChange })
     },
     [onPhotoChange]
   );
+
+  const startCamera = useCallback(async () => {
+    setCameraError(undefined);
+    setShowCamera(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      setCameraError('No se pudo acceder a la cámara. Verifica los permisos.');
+    }
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setShowCamera(false);
+    setCameraError(undefined);
+  }, []);
+
+  const capturePhoto = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(video, 0, 0);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      setPhotoUrl(dataUrl);
+      onPhotoChange(dataUrl);
+    }
+    stopCamera();
+  }, [onPhotoChange, stopCamera]);
 
   // Load image element when url changes.
   useEffect(() => {
@@ -215,22 +260,16 @@ const UploadStage: React.FC<Props> = ({ fabric, onPhotoChange, onPointsChange })
               <div className="card-title">Subir foto</div>
               <div className="card-copy">PNG/JPG, hasta 8MB</div>
             </label>
-            <label htmlFor="camera-input" className="upload-drop" style={{ flex: 1, minWidth: 140, cursor: 'pointer' }}>
-              <input
-                id="camera-input"
-                type="file"
-                accept="image/*"
-                capture="environment"
-                style={{ display: 'none' }}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleFile(file);
-                }}
-              />
+            <button
+              type="button"
+              className="upload-drop"
+              style={{ flex: 1, minWidth: 140, cursor: 'pointer', background: 'transparent' }}
+              onClick={startCamera}
+            >
               <div style={{ fontSize: 24, marginBottom: 4 }}>📷</div>
               <div className="card-title">Tomar foto</div>
               <div className="card-copy">Usa la cámara</div>
-            </label>
+            </button>
           </div>
           <div className="card-copy" style={{ marginTop: 8, textAlign: 'center' }}>
             Marca las 4 esquinas de la ventana.
@@ -332,6 +371,57 @@ const UploadStage: React.FC<Props> = ({ fabric, onPhotoChange, onPointsChange })
         </div>
       </div>
       {!photoUrl && <canvas ref={canvasRef} style={{ display: 'none' }} aria-hidden />}
+
+      {/* Camera Modal */}
+      {showCamera && (
+        <div className="fullscreen-overlay" onClick={stopCamera}>
+          <button className="fullscreen-close" onClick={stopCamera}>✕</button>
+          <div 
+            style={{ 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center', 
+              gap: 16,
+              maxWidth: '90vw',
+              maxHeight: '90vh'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {cameraError ? (
+              <div style={{ 
+                background: 'rgba(255,255,255,0.1)', 
+                padding: 32, 
+                borderRadius: 12,
+                color: '#fff',
+                textAlign: 'center'
+              }}>
+                <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+                <p>{cameraError}</p>
+                <button className="btn" onClick={stopCamera} style={{ marginTop: 16 }}>Cerrar</button>
+              </div>
+            ) : (
+              <>
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  style={{ 
+                    maxWidth: '100%', 
+                    maxHeight: '70vh', 
+                    borderRadius: 12,
+                    background: '#000'
+                  }}
+                />
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <button className="btn secondary" onClick={stopCamera}>Cancelar</button>
+                  <button className="btn" onClick={capturePhoto}>📸 Capturar</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
