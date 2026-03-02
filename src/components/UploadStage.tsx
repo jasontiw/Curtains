@@ -25,8 +25,9 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
   const [points, setPoints] = useState<Point[]>(defaultPoints());
   const [placingIndex, setPlacingIndex] = useState<number>(0);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOffset, setDragOffset] = useState<Point>({ x: 0, y: 0 });
   const [dragPoly, setDragPoly] = useState<{ start: Point; points: Point[] } | null>(null);
-  const [fabricImg, setFabricImg] = useState<HTMLImageElement>();
+  const [fabricImg, setFabricImg] = useState<HTMLCanvasElement | HTMLImageElement>();
   const [isDragging, setIsDragging] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -35,12 +36,24 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
   const pointsRef = useRef<Point[]>(points);
   pointsRef.current = points;
 
-  // Load fabric texture for 2D warp.
+  // Load fabric texture for 2D warp - rasterize SVG to canvas for consistent dimensions
   useEffect(() => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.src = fabric.textureUrl;
-    img.onload = () => setFabricImg(img);
+    img.onload = () => {
+      // Rasterize to a fixed-size canvas to avoid SVG dimension issues
+      const texSize = 512;
+      const offscreen = document.createElement('canvas');
+      offscreen.width = texSize;
+      offscreen.height = texSize;
+      const ctx = offscreen.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, texSize, texSize);
+      }
+      // Use the canvas as image source (it implements CanvasImageSource)
+      setFabricImg(offscreen);
+    };
   }, [fabric.textureUrl]);
 
   const handleFile = useCallback(
@@ -97,54 +110,62 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
       ctx.drawImage(photoImage, 0, 0, w, h);
 
       const currentPoints = pointsRef.current;
-      const [p0, p1, p2, p3] = currentPoints.map((p) => toPixel(p, w, h));
-      const sw = fabricImg.width;
-      const sh = fabricImg.height;
-      const stepU = 1 / gridSize;
-      const stepV = 1 / gridSize;
+      // Points: TL(0), TR(1), BR(2), BL(3)
+      const [pTL, pTR, pBR, pBL] = currentPoints.map((p) => toPixel(p, w, h));
+      
+      // Get fabric pixel data for direct sampling
+      const fabricCanvas = fabricImg as HTMLCanvasElement;
+      const fabricCtx = fabricCanvas.getContext('2d');
+      if (!fabricCtx) return;
+      const fabricData = fabricCtx.getImageData(0, 0, fabricCanvas.width, fabricCanvas.height);
+      const sw = fabricCanvas.width;
+      const sh = fabricCanvas.height;
 
-      for (let iu = 0; iu < gridSize; iu += 1) {
-        for (let iv = 0; iv < gridSize; iv += 1) {
-          const u0 = iu * stepU;
-          const u1 = (iu + 1) * stepU;
-          const v0 = iv * stepV;
-          const v1 = (iv + 1) * stepV;
+      // Get bounding box of destination quad
+      const minX = Math.floor(Math.min(pTL.x, pTR.x, pBR.x, pBL.x));
+      const maxX = Math.ceil(Math.max(pTL.x, pTR.x, pBR.x, pBL.x));
+      const minY = Math.floor(Math.min(pTL.y, pTR.y, pBR.y, pBL.y));
+      const maxY = Math.ceil(Math.max(pTL.y, pTR.y, pBR.y, pBL.y));
 
-          const q00 = bilerp(p0, p1, p2, p3, u0, v0);
-          const q10 = bilerp(p0, p1, p2, p3, u1, v0);
-          const q11 = bilerp(p0, p1, p2, p3, u1, v1);
-          const q01 = bilerp(p0, p1, p2, p3, u0, v1);
+      // Get current image data for the bounding box region
+      const destData = ctx.getImageData(minX, minY, maxX - minX, maxY - minY);
+      const destW = maxX - minX;
+      
+      const alpha = fabric.translucency;
 
-          const sx0 = u0 * sw;
-          const sx1 = u1 * sw;
-          const sy0 = v0 * sh;
-          const sy1 = v1 * sh;
-
-          drawTexturedTri(
-            ctx,
-            fabricImg,
-            { x: sx0, y: sy0 },
-            { x: sx1, y: sy0 },
-            { x: sx1, y: sy1 },
-            q00,
-            q10,
-            q11,
-            fabric.translucency
-          );
-
-          drawTexturedTri(
-            ctx,
-            fabricImg,
-            { x: sx0, y: sy0 },
-            { x: sx1, y: sy1 },
-            { x: sx0, y: sy1 },
-            q00,
-            q11,
-            q01,
-            fabric.translucency
-          );
+      // For each pixel in bounding box, check if inside quad and sample texture
+      for (let py = minY; py < maxY; py++) {
+        for (let px = minX; px < maxX; px++) {
+          // Convert to normalized coords and check if inside quad
+          const p = { x: px, y: py };
+          
+          // Compute inverse bilinear to find (u,v) for this pixel
+          const uv = inverseBilinear(p, pTL, pTR, pBR, pBL);
+          if (!uv || uv.u < 0 || uv.u > 1 || uv.v < 0 || uv.v > 1) continue;
+          
+          // Sample fabric texture at (u,v)
+          const srcX = Math.floor(uv.u * (sw - 1));
+          const srcY = Math.floor(uv.v * (sh - 1));
+          const srcIdx = (srcY * sw + srcX) * 4;
+          
+          const r = fabricData.data[srcIdx];
+          const g = fabricData.data[srcIdx + 1];
+          const b = fabricData.data[srcIdx + 2];
+          const a = fabricData.data[srcIdx + 3];
+          
+          // Blend with destination
+          const destIdx = ((py - minY) * destW + (px - minX)) * 4;
+          const srcAlpha = (a / 255) * alpha;
+          const invSrcAlpha = 1 - srcAlpha;
+          
+          destData.data[destIdx] = Math.round(r * srcAlpha + destData.data[destIdx] * invSrcAlpha);
+          destData.data[destIdx + 1] = Math.round(g * srcAlpha + destData.data[destIdx + 1] * invSrcAlpha);
+          destData.data[destIdx + 2] = Math.round(b * srcAlpha + destData.data[destIdx + 2] * invSrcAlpha);
+          destData.data[destIdx + 3] = 255;
         }
       }
+      
+      ctx.putImageData(destData, minX, minY);
 
       if (exportPng) {
         onComposite(targetCanvas.toDataURL('image/png'));
@@ -185,11 +206,13 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
   }, [isDragging, points, scheduleLivePreview]);
 
   const setPointAtPos = useCallback(
-    (clientX: number, clientY: number, idx: number) => {
+    (clientX: number, clientY: number, idx: number, offset: Point) => {
       if (!overlayRef.current) return;
       const rect = overlayRef.current.getBoundingClientRect();
-      const x = clamp01((clientX - rect.left) / rect.width);
-      const y = clamp01((clientY - rect.top) / rect.height);
+      const rawX = (clientX - rect.left) / rect.width;
+      const rawY = (clientY - rect.top) / rect.height;
+      const x = clamp01(rawX - offset.x);
+      const y = clamp01(rawY - offset.y);
       setPoints((prev) => {
         const next = [...prev];
         next[idx] = { x, y };
@@ -208,7 +231,7 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (dragIndex !== null) {
         e.preventDefault();
-        setPointAtPos(e.clientX, e.clientY, dragIndex);
+        setPointAtPos(e.clientX, e.clientY, dragIndex, dragOffset);
         return;
       }
       if (dragPoly) {
@@ -226,11 +249,12 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
         return;
       }
     },
-    [clamp01, clampPoint, dragIndex, dragPoly, setPointAtPos]
+    [clamp01, clampPoint, dragIndex, dragOffset, dragPoly, setPointAtPos]
   );
 
   const stopDrag = useCallback(() => {
     setDragIndex(null);
+    setDragOffset({ x: 0, y: 0 });
     setDragPoly(null);
     setIsDragging(false);
   }, []);
@@ -343,6 +367,13 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
                     onPointerDown={(e) => {
                       e.stopPropagation();
                       (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                      if (!overlayRef.current) return;
+                      const rect = overlayRef.current.getBoundingClientRect();
+                      const clickX = (e.clientX - rect.left) / rect.width;
+                      const clickY = (e.clientY - rect.top) / rect.height;
+                      const currentPt = pointsRef.current[idx];
+                      // Store offset between click and point so it doesn't jump
+                      setDragOffset({ x: clickX - currentPt.x, y: clickY - currentPt.y });
                       setIsDragging(true);
                       setDragIndex(idx);
                     }}
@@ -355,7 +386,25 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
           )}
         </div>
       </div>
-      <canvas ref={canvasRef} style={{ display: 'none' }} aria-hidden />
+      {photoUrl && (
+        <div style={{ marginTop: 16 }}>
+          <div className="card-title">Resultado del warp (debug)</div>
+          <canvas 
+            ref={canvasRef} 
+            style={{ 
+              display: 'block', 
+              width: '100%', 
+              maxWidth: 600,
+              borderRadius: 12,
+              border: '1px solid rgba(77,124,245,0.3)'
+            }} 
+          />
+          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
+            Revisa la consola del navegador (F12) para ver las dimensiones de la textura.
+          </div>
+        </div>
+      )}
+      {!photoUrl && <canvas ref={canvasRef} style={{ display: 'none' }} aria-hidden />}
     </div>
   );
 };
@@ -383,6 +432,79 @@ function bilerp(p0: Point, p1: Point, p2: Point, p3: Point, u: number, v: number
   return { x, y };
 }
 
+// Correct bilinear interpolation: TL at (0,0), TR at (1,0), BR at (1,1), BL at (0,1)
+function bilinearInterp(pTL: Point, pTR: Point, pBR: Point, pBL: Point, u: number, v: number): Point {
+  // Top edge: interpolate between TL and TR
+  const topX = pTL.x + (pTR.x - pTL.x) * u;
+  const topY = pTL.y + (pTR.y - pTL.y) * u;
+  // Bottom edge: interpolate between BL and BR
+  const botX = pBL.x + (pBR.x - pBL.x) * u;
+  const botY = pBL.y + (pBR.y - pBL.y) * u;
+  // Vertical interpolation
+  return {
+    x: topX + (botX - topX) * v,
+    y: topY + (botY - topY) * v
+  };
+}
+
+// Inverse bilinear interpolation: given a point p and quad corners, find (u,v)
+// Returns null if point is outside quad
+function inverseBilinear(
+  p: Point,
+  pTL: Point,
+  pTR: Point,
+  pBR: Point,
+  pBL: Point
+): { u: number; v: number } | null {
+  // Use iterative Newton-Raphson method to solve for (u,v)
+  // Start with initial guess at center
+  let u = 0.5;
+  let v = 0.5;
+  
+  for (let iter = 0; iter < 10; iter++) {
+    // Current interpolated position
+    const topX = pTL.x + (pTR.x - pTL.x) * u;
+    const topY = pTL.y + (pTR.y - pTL.y) * u;
+    const botX = pBL.x + (pBR.x - pBL.x) * u;
+    const botY = pBL.y + (pBR.y - pBL.y) * u;
+    const qx = topX + (botX - topX) * v;
+    const qy = topY + (botY - topY) * v;
+    
+    // Error
+    const ex = p.x - qx;
+    const ey = p.y - qy;
+    
+    if (Math.abs(ex) < 0.01 && Math.abs(ey) < 0.01) {
+      return { u, v };
+    }
+    
+    // Jacobian partial derivatives
+    const dxdu = (pTR.x - pTL.x) * (1 - v) + (pBR.x - pBL.x) * v;
+    const dxdv = (pBL.x - pTL.x) + (pBR.x - pBL.x - pTR.x + pTL.x) * u;
+    const dydu = (pTR.y - pTL.y) * (1 - v) + (pBR.y - pBL.y) * v;
+    const dydv = (pBL.y - pTL.y) + (pBR.y - pBL.y - pTR.y + pTL.y) * u;
+    
+    // Solve 2x2 system using Cramer's rule
+    const det = dxdu * dydv - dxdv * dydu;
+    if (Math.abs(det) < 0.0001) {
+      break;
+    }
+    
+    const du = (ex * dydv - ey * dxdv) / det;
+    const dv = (dxdu * ey - dydu * ex) / det;
+    
+    u += du;
+    v += dv;
+  }
+  
+  // Check if final (u,v) is valid
+  if (u >= -0.001 && u <= 1.001 && v >= -0.001 && v <= 1.001) {
+    return { u: Math.max(0, Math.min(1, u)), v: Math.max(0, Math.min(1, v)) };
+  }
+  
+  return null;
+}
+
 function drawTexturedTri(
   ctx: CanvasRenderingContext2D,
   img: CanvasImageSource,
@@ -402,11 +524,54 @@ function drawTexturedTri(
   ctx.closePath();
   ctx.clip();
 
-  const m = computeAffineFromTri(s0, s1, s2, d0, d1, d2);
-  ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+  // Compute affine transform: source triangle -> destination triangle
+  // Using the standard 2D affine mapping between two triangles
+  const denom = (s0.x - s2.x) * (s1.y - s2.y) - (s1.x - s2.x) * (s0.y - s2.y);
+  
+  if (Math.abs(denom) < 0.0001) {
+    ctx.restore();
+    return;
+  }
+
+  // Transform matrix components
+  const a = ((d0.x - d2.x) * (s1.y - s2.y) - (d1.x - d2.x) * (s0.y - s2.y)) / denom;
+  const b = ((d0.y - d2.y) * (s1.y - s2.y) - (d1.y - d2.y) * (s0.y - s2.y)) / denom;
+  const c = ((d1.x - d2.x) * (s0.x - s2.x) - (d0.x - d2.x) * (s1.x - s2.x)) / denom;
+  const d = ((d1.y - d2.y) * (s0.x - s2.x) - (d0.y - d2.y) * (s1.x - s2.x)) / denom;
+  const e = d2.x - a * s2.x - c * s2.y;
+  const f = d2.y - b * s2.x - d * s2.y;
+
+  ctx.setTransform(a, b, c, d, e, f);
   ctx.globalAlpha = alpha;
   ctx.drawImage(img, 0, 0);
   ctx.restore();
+}
+
+// Draw a warped quad by splitting into two triangles
+function drawWarpedQuad(
+  ctx: CanvasRenderingContext2D,
+  img: CanvasImageSource,
+  srcX: number,
+  srcY: number,
+  srcW: number,
+  srcH: number,
+  q00: Point, // top-left dest
+  q10: Point, // top-right dest
+  q11: Point, // bottom-right dest
+  q01: Point, // bottom-left dest
+  alpha: number
+) {
+  // Source corners in texture space
+  const s00 = { x: srcX, y: srcY };                    // TL
+  const s10 = { x: srcX + srcW, y: srcY };             // TR
+  const s11 = { x: srcX + srcW, y: srcY + srcH };      // BR
+  const s01 = { x: srcX, y: srcY + srcH };             // BL
+  
+  // Split quad along TL-BR diagonal:
+  // Triangle 1: TL, TR, BR (upper-right triangle)
+  // Triangle 2: TL, BR, BL (lower-left triangle)
+  drawTexturedTri(ctx, img, s00, s10, s11, q00, q10, q11, alpha);
+  drawTexturedTri(ctx, img, s00, s11, s01, q00, q11, q01, alpha);
 }
 
 function computeAffineFromTri(s0: Point, s1: Point, s2: Point, d0: Point, d1: Point, d2: Point) {
