@@ -20,7 +20,6 @@ const UploadStage: React.FC<Props> = ({ fabric, onPhotoChange, onPointsChange })
   const [photoUrl, setPhotoUrl] = useState<string>();
   const [photoImage, setPhotoImage] = useState<HTMLImageElement>();
   const [points, setPoints] = useState<Point[]>(defaultPoints());
-  const [placingIndex, setPlacingIndex] = useState<number>(0);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOffset, setDragOffset] = useState<Point>({ x: 0, y: 0 });
   const [dragPoly, setDragPoly] = useState<{ start: Point; points: Point[] } | null>(null);
@@ -51,7 +50,6 @@ const UploadStage: React.FC<Props> = ({ fabric, onPhotoChange, onPointsChange })
     img.onload = () => {
       setPhotoImage(img);
       setPoints(defaultPoints());
-      setPlacingIndex(0);
     };
     img.src = photoUrl;
   }, [photoUrl]);
@@ -193,11 +191,6 @@ const UploadStage: React.FC<Props> = ({ fabric, onPhotoChange, onPointsChange })
     return inside;
   }, []);
 
-  const instructions = useMemo(() => {
-    const names = ['Esquina superior izquierda', 'Esquina superior derecha', 'Esquina inferior derecha', 'Esquina inferior izquierda'];
-    return names[placingIndex];
-  }, [placingIndex]);
-
   return (
     <div className="surface" style={{ padding: 16 }}>
       <div className="section-header">
@@ -220,9 +213,6 @@ const UploadStage: React.FC<Props> = ({ fabric, onPhotoChange, onPointsChange })
             <div className="card-title">Arrastra o haz click</div>
             <div className="card-copy">PNG/JPG, hasta 8MB. Marca las 4 esquinas de la ventana.</div>
           </label>
-          {photoUrl && (
-            <p className="point-label">Coloca el siguiente punto: {instructions}</p>
-          )}
         </div>
         <div>
           {photoUrl ? (
@@ -293,7 +283,7 @@ const UploadStage: React.FC<Props> = ({ fabric, onPhotoChange, onPointsChange })
                     cx={p.x}
                     cy={p.y}
                     r={0.024}
-                    fill={idx === placingIndex ? '#4d7cf5' : '#ffffff'}
+                    fill="#ffffff"
                     stroke="#4d7cf5"
                     strokeWidth={0.008}
                     style={{ cursor: 'grab', touchAction: 'none' }}
