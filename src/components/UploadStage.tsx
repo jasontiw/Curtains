@@ -16,7 +16,8 @@ const defaultPoints = (): Point[] => [
   { x: 0.28, y: 0.7 }
 ];
 
-const grid = 36; // finer grid for better coverage
+const GRID_FULL = 36;
+const GRID_FAST = 10; // lower during drag for speed
 
 const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) => {
   const [photoUrl, setPhotoUrl] = useState<string>();
@@ -26,9 +27,13 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragPoly, setDragPoly] = useState<{ start: Point; points: Point[] } | null>(null);
   const [fabricImg, setFabricImg] = useState<HTMLImageElement>();
+  const [isDragging, setIsDragging] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
+  const pointsRef = useRef<Point[]>(points);
+  pointsRef.current = points;
 
   // Load fabric texture for 2D warp.
   useEffect(() => {
@@ -73,96 +78,111 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
     [clamp01]
   );
 
-  const renderCompositeImmediate = useCallback(() => {
-    if (!photoImage || !fabricImg) {
-      onComposite(undefined);
-      return;
-    }
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const maxW = 1200;
-    const scale = photoImage.width > maxW ? maxW / photoImage.width : 1;
-    const w = Math.round(photoImage.width * scale);
-    const h = Math.round(photoImage.height * scale);
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    ctx.clearRect(0, 0, w, h);
-    ctx.drawImage(photoImage, 0, 0, w, h);
-
-    const [p0, p1, p2, p3] = points.map((p) => toPixel(p, w, h));
-    const sw = fabricImg.width;
-    const sh = fabricImg.height;
-    const stepU = 1 / grid;
-    const stepV = 1 / grid;
-
-    for (let iu = 0; iu < grid; iu += 1) {
-      for (let iv = 0; iv < grid; iv += 1) {
-        const u0 = iu * stepU;
-        const u1 = (iu + 1) * stepU;
-        const v0 = iv * stepV;
-        const v1 = (iv + 1) * stepV;
-
-        // Destination quad corners via bilinear interpolation of the user quad.
-        const q00 = bilerp(p0, p1, p2, p3, u0, v0);
-        const q10 = bilerp(p0, p1, p2, p3, u1, v0);
-        const q11 = bilerp(p0, p1, p2, p3, u1, v1);
-        const q01 = bilerp(p0, p1, p2, p3, u0, v1);
-
-        // Source quad corners in fabric space.
-        const sx0 = u0 * sw;
-        const sx1 = u1 * sw;
-        const sy0 = v0 * sh;
-        const sy1 = v1 * sh;
-
-        // Triangle 1: q00, q10, q11 maps from (sx0,sy0)-(sx1,sy0)-(sx1,sy1)
-        drawTexturedTri(
-          ctx,
-          fabricImg,
-          { x: sx0, y: sy0 },
-          { x: sx1, y: sy0 },
-          { x: sx1, y: sy1 },
-          q00,
-          q10,
-          q11,
-          fabric.translucency
-        );
-
-        // Triangle 2: q00, q11, q01 maps from (sx0,sy0)-(sx1,sy1)-(sx0,sy1)
-        drawTexturedTri(
-          ctx,
-          fabricImg,
-          { x: sx0, y: sy0 },
-          { x: sx1, y: sy1 },
-          { x: sx0, y: sy1 },
-          q00,
-          q11,
-          q01,
-          fabric.translucency
-        );
+  const renderWarp = useCallback(
+    (targetCanvas: HTMLCanvasElement, gridSize: number, exportPng: boolean) => {
+      if (!photoImage || !fabricImg) {
+        if (exportPng) onComposite(undefined);
+        return;
       }
-    }
+      const maxW = 1200;
+      const scale = photoImage.width > maxW ? maxW / photoImage.width : 1;
+      const w = Math.round(photoImage.width * scale);
+      const h = Math.round(photoImage.height * scale);
+      targetCanvas.width = w;
+      targetCanvas.height = h;
+      const ctx = targetCanvas.getContext('2d');
+      if (!ctx) return;
 
-    onComposite(canvas.toDataURL('image/png'));
-  }, [fabricImg, fabric.translucency, onComposite, photoImage, points, toPixel]);
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(photoImage, 0, 0, w, h);
 
-  const scheduleComposite = useCallback(() => {
+      const currentPoints = pointsRef.current;
+      const [p0, p1, p2, p3] = currentPoints.map((p) => toPixel(p, w, h));
+      const sw = fabricImg.width;
+      const sh = fabricImg.height;
+      const stepU = 1 / gridSize;
+      const stepV = 1 / gridSize;
+
+      for (let iu = 0; iu < gridSize; iu += 1) {
+        for (let iv = 0; iv < gridSize; iv += 1) {
+          const u0 = iu * stepU;
+          const u1 = (iu + 1) * stepU;
+          const v0 = iv * stepV;
+          const v1 = (iv + 1) * stepV;
+
+          const q00 = bilerp(p0, p1, p2, p3, u0, v0);
+          const q10 = bilerp(p0, p1, p2, p3, u1, v0);
+          const q11 = bilerp(p0, p1, p2, p3, u1, v1);
+          const q01 = bilerp(p0, p1, p2, p3, u0, v1);
+
+          const sx0 = u0 * sw;
+          const sx1 = u1 * sw;
+          const sy0 = v0 * sh;
+          const sy1 = v1 * sh;
+
+          drawTexturedTri(
+            ctx,
+            fabricImg,
+            { x: sx0, y: sy0 },
+            { x: sx1, y: sy0 },
+            { x: sx1, y: sy1 },
+            q00,
+            q10,
+            q11,
+            fabric.translucency
+          );
+
+          drawTexturedTri(
+            ctx,
+            fabricImg,
+            { x: sx0, y: sy0 },
+            { x: sx1, y: sy1 },
+            { x: sx0, y: sy1 },
+            q00,
+            q11,
+            q01,
+            fabric.translucency
+          );
+        }
+      }
+
+      if (exportPng) {
+        onComposite(targetCanvas.toDataURL('image/png'));
+      }
+    },
+    [fabricImg, fabric.translucency, onComposite, photoImage, toPixel]
+  );
+
+  const scheduleLivePreview = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
-      renderCompositeImmediate();
+      const canvas = previewCanvasRef.current ?? canvasRef.current;
+      if (canvas) renderWarp(canvas, GRID_FAST, false);
     });
-  }, [renderCompositeImmediate]);
+  }, [renderWarp]);
 
+  const exportFinalComposite = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (canvas) renderWarp(canvas, GRID_FULL, true);
+  }, [renderWarp]);
+
+  // Full quality export when points change and NOT dragging
   useEffect(() => {
-    scheduleComposite();
+    if (!isDragging) {
+      exportFinalComposite();
+    }
+  }, [isDragging, exportFinalComposite, points]);
+
+  // Fast preview while dragging
+  useEffect(() => {
+    if (isDragging) {
+      scheduleLivePreview();
+    }
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [scheduleComposite]);
+  }, [isDragging, points, scheduleLivePreview]);
 
   const setPointAtPos = useCallback(
     (clientX: number, clientY: number, idx: number) => {
@@ -170,11 +190,13 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
       const rect = overlayRef.current.getBoundingClientRect();
       const x = clamp01((clientX - rect.left) / rect.width);
       const y = clamp01((clientY - rect.top) / rect.height);
-      const next = [...points];
-      next[idx] = { x, y };
-      setPoints(next);
+      setPoints((prev) => {
+        const next = [...prev];
+        next[idx] = { x, y };
+        return next;
+      });
     },
-    [clamp01, points]
+    [clamp01]
   );
 
   const onClickImage = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -198,10 +220,11 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
         const dx = x - dragPoly.start.x;
         const dy = y - dragPoly.start.y;
         const moved = dragPoly.points.map((p) => clampPoint({ x: p.x + dx, y: p.y + dy }));
+        // Update start position to avoid drift
+        setDragPoly({ start: { x, y }, points: moved });
         setPoints(moved);
         return;
       }
-      e.preventDefault();
     },
     [clamp01, clampPoint, dragIndex, dragPoly, setPointAtPos]
   );
@@ -209,6 +232,7 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
   const stopDrag = useCallback(() => {
     setDragIndex(null);
     setDragPoly(null);
+    setIsDragging(false);
   }, []);
 
   const isInsidePolygon = useCallback((pt: Point, poly: Point[]) => {
@@ -270,17 +294,25 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
                 const x = clamp01((e.clientX - rect.left) / rect.width);
                 const y = clamp01((e.clientY - rect.top) / rect.height);
                 const p = { x, y };
-                // if click is not on a handle, and is inside polygon, start polygon drag
-                const overHandle = points.some((pt) => {
+                const currentPts = pointsRef.current;
+                const overHandle = currentPts.some((pt) => {
                   const dx = pt.x - p.x;
                   const dy = pt.y - p.y;
-                  return dx * dx + dy * dy < 0.004; // ~2% radius squared
+                  return dx * dx + dy * dy < 0.004;
                 });
-                if (!overHandle && isInsidePolygon(p, points)) {
-                  setDragPoly({ start: p, points: points.slice() });
+                if (!overHandle && isInsidePolygon(p, currentPts)) {
+                  setIsDragging(true);
+                  setDragPoly({ start: p, points: currentPts.slice() });
                 }
               }}
-              style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow)' }}
+              style={{
+                position: 'relative',
+                borderRadius: 16,
+                overflow: 'hidden',
+                boxShadow: 'var(--shadow)',
+                touchAction: 'none',
+                willChange: isDragging ? 'transform' : 'auto'
+              }}
             >
               <img src={photoUrl} alt="Tu espacio" style={{ display: 'block', width: '100%' }} />
               <svg
@@ -307,10 +339,11 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
                     fill={idx === placingIndex ? '#4d7cf5' : '#ffffff'}
                     stroke="#4d7cf5"
                     strokeWidth={0.8}
-                    style={{ cursor: 'grab' }}
+                    style={{ cursor: 'grab', touchAction: 'none' }}
                     onPointerDown={(e) => {
                       e.stopPropagation();
                       (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                      setIsDragging(true);
                       setDragIndex(idx);
                     }}
                   />
