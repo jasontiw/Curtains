@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="linenBg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f5f0e6" stop-opacity="1" />
+      <stop offset="100%" stop-color="#e8e0d0" stop-opacity="1" />
+    </linearGradient>
+    <!-- Horizontal fibers -->
+    <pattern id="hFibers" x="0" y="0" width="8" height="4" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="2" x2="8" y2="2" stroke="#c9bda8" stroke-width="0.8" stroke-opacity="0.5" />
+    </pattern>
+    <!-- Vertical fibers -->
+    <pattern id="vFibers" x="0" y="0" width="6" height="10" patternUnits="userSpaceOnUse">
+      <line x1="3" y1="0" x2="3" y2="10" stroke="#d4c8b5" stroke-width="0.6" stroke-opacity="0.4" />
+    </pattern>
+    <!-- Random texture dots -->
+    <pattern id="texture" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="3" r="0.5" fill="#bfb094" fill-opacity="0.3" />
+      <circle cx="9" cy="7" r="0.4" fill="#c5b8a5" fill-opacity="0.25" />
+      <circle cx="5" cy="12" r="0.6" fill="#b8a890" fill-opacity="0.2" />
+      <circle cx="14" cy="2" r="0.3" fill="#c0b39f" fill-opacity="0.3" />
+      <circle cx="11" cy="14" r="0.5" fill="#baa98c" fill-opacity="0.25" />
+    </pattern>
+  </defs>
+  <rect width="256" height="256" fill="url(#linenBg)" />
+  <rect width="256" height="256" fill="url(#hFibers)" />
+  <rect width="256" height="256" fill="url(#vFibers)" />
+  <rect width="256" height="256" fill="url(#texture)" />
+</svg>

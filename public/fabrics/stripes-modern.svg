@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="stripesBg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f0f2f5" stop-opacity="1" />
+      <stop offset="100%" stop-color="#e8eaed" stop-opacity="1" />
+    </linearGradient>
+    <!-- Horizontal stripes pattern -->
+    <pattern id="hStripes" x="0" y="0" width="256" height="24" patternUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="256" height="12" fill="#d8dce3" fill-opacity="0.4" />
+      <rect x="0" y="12" width="256" height="12" fill="#e8eaed" fill-opacity="0.2" />
+      <!-- Subtle texture lines within stripes -->
+      <line x1="0" y1="6" x2="256" y2="6" stroke="#c5cad3" stroke-width="0.3" stroke-opacity="0.3" />
+      <line x1="0" y1="18" x2="256" y2="18" stroke="#dfe2e7" stroke-width="0.3" stroke-opacity="0.2" />
+    </pattern>
+    <!-- Vertical thread texture -->
+    <pattern id="threads" x="0" y="0" width="6" height="24" patternUnits="userSpaceOnUse">
+      <line x1="3" y1="0" x2="3" y2="24" stroke="#bfc5cf" stroke-width="0.4" stroke-opacity="0.15" />
+    </pattern>
+  </defs>
+  <rect width="256" height="256" fill="url(#stripesBg)" />
+  <rect width="256" height="256" fill="url(#hStripes)" />
+  <rect width="256" height="256" fill="url(#threads)" />
+</svg>

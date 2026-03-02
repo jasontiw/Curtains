@@ -29,6 +29,38 @@ const fabrics: Fabric[] = [
     textureUrl: '/fabrics/sheer-gray.svg',
     tint: '#e2e6ef',
     translucency: 0.58
+  },
+  {
+    id: 'linen-natural',
+    name: 'Lino Natural',
+    description: 'Textura rústica con fibras visibles',
+    textureUrl: '/fabrics/linen-natural.svg',
+    tint: '#e8e0d0',
+    translucency: 0.85
+  },
+  {
+    id: 'blackout-elegant',
+    name: 'Blackout Elegante',
+    description: 'Opaco con acabado satinado',
+    textureUrl: '/fabrics/blackout-elegant.svg',
+    tint: '#3a3a45',
+    translucency: 0.95
+  },
+  {
+    id: 'lace-romantic',
+    name: 'Encaje Romántico',
+    description: 'Patrón floral delicado',
+    textureUrl: '/fabrics/lace-romantic.svg',
+    tint: '#f8f4f0',
+    translucency: 0.55
+  },
+  {
+    id: 'stripes-modern',
+    name: 'Rayas Modernas',
+    description: 'Líneas horizontales sutiles',
+    textureUrl: '/fabrics/stripes-modern.svg',
+    tint: '#e8eaed',
+    translucency: 0.75
   }
 ];
 
@@ -49,16 +81,16 @@ function App() {
       >
         <div>
           <div className="pill" style={{ display: 'inline-flex', marginBottom: 10 }}>
-            Sheers dinámicos
+            Cortinas virtuales
           </div>
-          <h1>Prueba cortinas sheer en tu espacio</h1>
+          <h1>Prueba cortinas en tu espacio</h1>
           <p>
-            Anima, elige texturas translúcidas y prueba sobre la foto de tu ventana. Todo corre en el navegador, sin descargas.
+            Elige entre sheers, lino, blackout o encaje. Prueba sobre la foto de tu ventana con efecto de brisa animada.
           </p>
           <div className="badge-row">
-            <span className="badge">3D motion con Three.js</span>
-            <span className="badge">Warp 2D en canvas</span>
-            <span className="badge">Listo para móvil</span>
+            <span className="badge">7 estilos de tela</span>
+            <span className="badge">Animación de brisa</span>
+            <span className="badge">Pliegues realistas</span>
           </div>
         </div>
         <CurtainScene fabric={activeFabric} />
@@ -67,8 +99,8 @@ function App() {
       <section className="grid" style={{ marginTop: 20 }}>
         <div className="surface" style={{ padding: 16 }}>
           <div className="section-header">
-            <h2>Elige tu sheer</h2>
-            <span className="pill">Catálogo inicial</span>
+            <h2>Elige tu tela</h2>
+            <span className="pill">7 estilos</span>
           </div>
           <FabricPicker fabrics={fabrics} activeId={activeId} onSelect={setActiveId} />
         </div>

@@ -26,9 +26,12 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
   const [dragPoly, setDragPoly] = useState<{ start: Point; points: Point[] } | null>(null);
   const [fabricImg, setFabricImg] = useState<HTMLCanvasElement | HTMLImageElement>();
   const [isDragging, setIsDragging] = useState(false);
+  const [breezeEnabled, setBreezeEnabled] = useState(true);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
+  const breezeRef = useRef<number | null>(null);
+  const timeRef = useRef<number>(0);
   const pointsRef = useRef<Point[]>(points);
   pointsRef.current = points;
 
@@ -88,7 +91,7 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
   );
 
   const renderWarp = useCallback(
-    (targetCanvas: HTMLCanvasElement, exportPng: boolean) => {
+    (targetCanvas: HTMLCanvasElement, exportPng: boolean, time: number = 0) => {
       if (!photoImage || !fabricImg) {
         if (exportPng) onComposite(undefined);
         return;
@@ -144,6 +147,9 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
       const destW = maxX - minX;
       
       const alpha = fabric.translucency;
+      
+      // Number of vertical pleats (folds)
+      const numPleats = 8;
 
       // For each pixel in bounding box, check if inside quad and sample texture
       for (let py = minY; py < maxY; py++) {
@@ -173,10 +179,27 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
           const srcY = Math.floor(uv.v * (sh - 1));
           const srcIdx = (srcY * sw + srcX) * 4;
           
-          const r = fabricData.data[srcIdx];
-          const g = fabricData.data[srcIdx + 1];
-          const b = fabricData.data[srcIdx + 2];
+          let r = fabricData.data[srcIdx];
+          let g = fabricData.data[srcIdx + 1];
+          let b = fabricData.data[srcIdx + 2];
           const a = fabricData.data[srcIdx + 3];
+          
+          // Add vertical pleats effect (sinusoidal brightness variation)
+          // Include time-based oscillation for breeze animation
+          const breezeOffset = time * 2; // Slow wave movement
+          const pleatPhase = (uv.u * numPleats + breezeOffset) * Math.PI * 2;
+          const breezeWave = Math.sin(time * 3 + uv.v * 4) * 0.03; // Subtle vertical wave
+          const pleatFactor = 0.90 + 0.10 * Math.sin(pleatPhase + breezeWave);
+          
+          // Add edge shadows (darker at left and right edges)
+          const edgeDistance = Math.min(uv.u, 1 - uv.u) * 2; // 0 at edges, 1 at center
+          const shadowFactor = 0.7 + 0.3 * Math.pow(edgeDistance, 0.5);
+          
+          // Combine lighting effects
+          const lightFactor = pleatFactor * shadowFactor;
+          r = Math.round(r * lightFactor);
+          g = Math.round(g * lightFactor);
+          b = Math.round(b * lightFactor);
           
           // Blend with destination
           const destIdx = ((py - minY) * destW + (px - minX)) * 4;
@@ -204,21 +227,53 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
       const canvas = canvasRef.current;
-      if (canvas) renderWarp(canvas, false);
+      if (canvas) renderWarp(canvas, false, timeRef.current);
     });
   }, [renderWarp]);
 
   const exportFinalComposite = useCallback(() => {
     const canvas = canvasRef.current;
-    if (canvas) renderWarp(canvas, true);
+    if (canvas) renderWarp(canvas, true, 0);
   }, [renderWarp]);
+  
+  // Breeze animation loop
+  useEffect(() => {
+    if (!breezeEnabled || isDragging || !photoImage || !fabricImg) {
+      if (breezeRef.current) {
+        cancelAnimationFrame(breezeRef.current);
+        breezeRef.current = null;
+      }
+      return;
+    }
+    
+    let lastTime = performance.now();
+    const animate = (currentTime: number) => {
+      const delta = (currentTime - lastTime) / 1000;
+      lastTime = currentTime;
+      timeRef.current += delta * 0.5; // Slow animation speed
+      
+      const canvas = canvasRef.current;
+      if (canvas) renderWarp(canvas, false, timeRef.current);
+      
+      breezeRef.current = requestAnimationFrame(animate);
+    };
+    
+    breezeRef.current = requestAnimationFrame(animate);
+    
+    return () => {
+      if (breezeRef.current) {
+        cancelAnimationFrame(breezeRef.current);
+        breezeRef.current = null;
+      }
+    };
+  }, [breezeEnabled, isDragging, photoImage, fabricImg, renderWarp]);
 
   // Full quality export when points change and NOT dragging
   useEffect(() => {
     if (!isDragging) {
       exportFinalComposite();
     }
-  }, [isDragging, exportFinalComposite, points]);
+  }, [isDragging, exportFinalComposite, points, fabricImg]);
 
   // Fast preview while dragging
   useEffect(() => {
@@ -326,6 +381,16 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
           </label>
           {photoUrl && (
             <p className="point-label">Coloca el siguiente punto: {instructions}</p>
+          )}
+          {photoUrl && (
+            <button
+              className={`selector-chip ${breezeEnabled ? 'active' : ''}`}
+              onClick={() => setBreezeEnabled(!breezeEnabled)}
+              style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <span style={{ fontSize: 16 }}>🌬️</span>
+              {breezeEnabled ? 'Brisa activa' : 'Activar brisa'}
+            </button>
           )}
         </div>
         <div>
