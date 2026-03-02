@@ -8,9 +8,21 @@ type Props = {
   fabric: Fabric;
 };
 
+type RodMaterial = 'metal' | 'wood-light' | 'wood-dark' | 'brass' | 'black';
+
+const rodMaterials: { id: RodMaterial; label: string; colors: string[] }[] = [
+  { id: 'metal', label: 'Metal', colors: ['#8B8B8B', '#E8E8E8', '#FFFFFF', '#C0C0C0', '#6B6B6B'] },
+  { id: 'wood-light', label: 'Madera clara', colors: ['#C4A574', '#E8D4B4', '#F5E6D3', '#D4B896', '#A08060'] },
+  { id: 'wood-dark', label: 'Madera oscura', colors: ['#4A3728', '#6B4F3A', '#7D5E4A', '#5C4433', '#3A2818'] },
+  { id: 'brass', label: 'Latón', colors: ['#8B7333', '#D4AF37', '#FFD700', '#C5A028', '#705C1A'] },
+  { id: 'black', label: 'Negro mate', colors: ['#1A1A1A', '#3A3A3A', '#4A4A4A', '#2A2A2A', '#0A0A0A'] },
+];
+
 const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
   const [breezeEnabled, setBreezeEnabled] = useState(false);
   const [pleatsEnabled, setPleatsEnabled] = useState(true);
+  const [showRod, setShowRod] = useState(true);
+  const [rodMaterial, setRodMaterial] = useState<RodMaterial>('metal');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [photoImage, setPhotoImage] = useState<HTMLImageElement>();
   const [fabricImg, setFabricImg] = useState<HTMLCanvasElement>();
@@ -52,7 +64,7 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
   const toPixel = useCallback((p: Point, w: number, h: number) => ({ x: p.x * w, y: p.y * h }), []);
 
   const renderWarp = useCallback(
-    (time: number, showPleats: boolean, animateBreeze: boolean) => {
+    (time: number, showPleats: boolean, animateBreeze: boolean, displayRod: boolean, material: RodMaterial) => {
       const canvas = canvasRef.current;
       if (!canvas || !photoImage || !fabricImg || !points || points.length < 4) return;
 
@@ -142,6 +154,7 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
       ctx.putImageData(destData, minX, minY);
 
       // === REALISM: Curtain Rod (follows top edge angle) ===
+      if (displayRod) {
       const rodHeight = Math.max(6, (pBL.y - pTL.y) * 0.02);
       const rodExtend = rodHeight * 1.5;
       
@@ -162,13 +175,14 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
       ctx.translate(rodMidX, rodMidY);
       ctx.rotate(topAngle);
       
-      // Rod gradient (metallic look) - vertical gradient relative to rod
+      // Rod gradient based on material
+      const matColors = rodMaterials.find(m => m.id === material)?.colors || rodMaterials[0].colors;
       const rodGradient = ctx.createLinearGradient(0, -rodHeight/2, 0, rodHeight/2);
-      rodGradient.addColorStop(0, '#8B8B8B');
-      rodGradient.addColorStop(0.3, '#E8E8E8');
-      rodGradient.addColorStop(0.5, '#FFFFFF');
-      rodGradient.addColorStop(0.7, '#C0C0C0');
-      rodGradient.addColorStop(1, '#6B6B6B');
+      rodGradient.addColorStop(0, matColors[0]);
+      rodGradient.addColorStop(0.3, matColors[1]);
+      rodGradient.addColorStop(0.5, matColors[2]);
+      rodGradient.addColorStop(0.7, matColors[3]);
+      rodGradient.addColorStop(1, matColors[4]);
       
       // Draw rod (centered at origin after transform)
       ctx.fillStyle = rodGradient;
@@ -186,9 +200,9 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
       const finialRadius = rodHeight * 0.8;
       [-rodTotalLength/2, rodTotalLength/2].forEach((fx) => {
         const finialGrad = ctx.createRadialGradient(fx - finialRadius*0.3, -finialRadius*0.3, 0, fx, 0, finialRadius);
-        finialGrad.addColorStop(0, '#FFFFFF');
-        finialGrad.addColorStop(0.5, '#C0C0C0');
-        finialGrad.addColorStop(1, '#707070');
+        finialGrad.addColorStop(0, matColors[2]);
+        finialGrad.addColorStop(0.5, matColors[3]);
+        finialGrad.addColorStop(1, matColors[0]);
         ctx.fillStyle = finialGrad;
         ctx.beginPath();
         ctx.arc(fx, 0, finialRadius, 0, Math.PI * 2);
@@ -200,6 +214,8 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
       // === REALISM: Curtain Rings (follow top edge) ===
       const numRings = 7;
       const ringRadius = rodHeight * 0.6;
+      const ringColor = material === 'black' ? '#3A3A3A' : (material.startsWith('wood') ? matColors[3] : '#A0A0A0');
+      const ringHighlight = material === 'black' ? '#5A5A5A' : (material.startsWith('wood') ? matColors[1] : '#E0E0E0');
       for (let i = 0; i < numRings; i++) {
         const t = (i + 0.5) / numRings;
         // Ring position on the fabric top edge
@@ -210,27 +226,28 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
         const ringY = fabricY - rodHeight;
         
         // Ring body
-        ctx.strokeStyle = '#A0A0A0';
+        ctx.strokeStyle = ringColor;
         ctx.lineWidth = ringRadius * 0.3;
         ctx.beginPath();
         ctx.arc(ringX, ringY, ringRadius, 0, Math.PI * 2);
         ctx.stroke();
         
         // Ring highlight
-        ctx.strokeStyle = '#E0E0E0';
+        ctx.strokeStyle = ringHighlight;
         ctx.lineWidth = ringRadius * 0.15;
         ctx.beginPath();
         ctx.arc(ringX, ringY, ringRadius, -Math.PI * 0.7 + topAngle, -Math.PI * 0.3 + topAngle);
         ctx.stroke();
         
         // Clip connecting to fabric
-        ctx.strokeStyle = '#909090';
+        ctx.strokeStyle = ringColor;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(ringX, ringY + ringRadius);
         ctx.lineTo(fabricX, fabricY);
         ctx.stroke();
       }
+      } // end if displayRod
 
       // === REALISM: Weighted Hem ===
       const hemHeight = Math.max(4, (pBL.y - pTL.y) * 0.015);
@@ -276,9 +293,9 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
   // Render static frame when not animating
   useEffect(() => {
     if (!breezeEnabled && photoImage && fabricImg && points) {
-      renderWarp(0, pleatsEnabled, false);
+      renderWarp(0, pleatsEnabled, false, showRod, rodMaterial);
     }
-  }, [breezeEnabled, pleatsEnabled, photoImage, fabricImg, points, renderWarp]);
+  }, [breezeEnabled, pleatsEnabled, showRod, rodMaterial, photoImage, fabricImg, points, renderWarp]);
 
   // Breeze animation loop
   useEffect(() => {
@@ -297,7 +314,7 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
       lastTime = currentTime;
       timeRef.current += delta * 0.5;
       
-      renderWarp(timeRef.current, pleatsEnabled, true);
+      renderWarp(timeRef.current, pleatsEnabled, true, showRod, rodMaterial);
       breezeRef.current = requestAnimationFrame(animate);
     };
     
@@ -309,7 +326,7 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
         breezeRef.current = null;
       }
     };
-  }, [breezeEnabled, pleatsEnabled, photoImage, fabricImg, points, renderWarp]);
+  }, [breezeEnabled, pleatsEnabled, showRod, rodMaterial, photoImage, fabricImg, points, renderWarp]);
 
   const hasPreview = photoUrl && points && points.length >= 4;
 
@@ -385,31 +402,64 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
       {photoUrl && (!points || points.length < 4) && <p className="card-copy">Ajusta los 4 puntos para ver el resultado.</p>}
       {hasPreview && (
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-            <div className="card-title">Vista previa con cortina</div>
-            <button
-              className={`selector-chip ${pleatsEnabled ? 'active' : ''}`}
-              onClick={() => setPleatsEnabled(!pleatsEnabled)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              <span style={{ fontSize: 16 }}>〰️</span>
-              {pleatsEnabled ? 'Ondulado' : 'Sin ondulado'}
-            </button>
-            <button
-              className={`selector-chip ${breezeEnabled ? 'active' : ''}`}
-              onClick={() => setBreezeEnabled(!breezeEnabled)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              <span style={{ fontSize: 16 }}>🌬️</span>
-              {breezeEnabled ? 'Brisa activa' : 'Activar brisa'}
-            </button>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+            {/* Efectos */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>✨ Efectos:</span>
+              <button
+                className={`selector-chip ${pleatsEnabled ? 'active' : ''}`}
+                onClick={() => setPleatsEnabled(!pleatsEnabled)}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 13 }}
+              >
+                〰️ {pleatsEnabled ? 'Ondas' : 'Liso'}
+              </button>
+              <button
+                className={`selector-chip ${breezeEnabled ? 'active' : ''}`}
+                onClick={() => setBreezeEnabled(!breezeEnabled)}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 13 }}
+              >
+                🌬️ Brisa
+              </button>
+            </div>
+            
+            {/* Barra */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>🪨 Barra:</span>
+              <button
+                className={`selector-chip ${showRod ? 'active' : ''}`}
+                onClick={() => setShowRod(!showRod)}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 13 }}
+              >
+                {showRod ? 'Sí' : 'No'}
+              </button>
+              {showRod && rodMaterials.map((mat) => (
+                <button
+                  key={mat.id}
+                  className={`selector-chip ${rodMaterial === mat.id ? 'active' : ''}`}
+                  onClick={() => setRodMaterial(mat.id)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 13 }}
+                  title={mat.label}
+                >
+                  <span
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: '50%',
+                      background: `linear-gradient(135deg, ${mat.colors[2]}, ${mat.colors[0]})`,
+                      border: '1px solid rgba(0,0,0,0.15)'
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
+
+            {/* Ampliar */}
             <button
               className="selector-chip"
               onClick={() => setIsFullscreen(true)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 13, marginLeft: 'auto' }}
             >
-              <span style={{ fontSize: 16 }}>⛶</span>
-              Ampliar
+              ⛶ Ampliar
             </button>
           </div>
           <canvas
