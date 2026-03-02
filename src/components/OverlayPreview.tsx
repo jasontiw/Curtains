@@ -140,6 +140,135 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
       }
       
       ctx.putImageData(destData, minX, minY);
+
+      // === REALISM: Curtain Rod (follows top edge angle) ===
+      const rodHeight = Math.max(6, (pBL.y - pTL.y) * 0.02);
+      const rodExtend = rodHeight * 1.5;
+      
+      // Calculate angle of top edge
+      const topDx = pTR.x - pTL.x;
+      const topDy = pTR.y - pTL.y;
+      const topAngle = Math.atan2(topDy, topDx);
+      const topLength = Math.sqrt(topDx * topDx + topDy * topDy);
+      
+      // Rod center point (slightly above the top edge midpoint)
+      const rodMidX = (pTL.x + pTR.x) / 2;
+      const rodMidY = (pTL.y + pTR.y) / 2 - rodHeight;
+      
+      // Total rod length including extensions
+      const rodTotalLength = topLength + rodExtend * 2;
+      
+      ctx.save();
+      ctx.translate(rodMidX, rodMidY);
+      ctx.rotate(topAngle);
+      
+      // Rod gradient (metallic look) - vertical gradient relative to rod
+      const rodGradient = ctx.createLinearGradient(0, -rodHeight/2, 0, rodHeight/2);
+      rodGradient.addColorStop(0, '#8B8B8B');
+      rodGradient.addColorStop(0.3, '#E8E8E8');
+      rodGradient.addColorStop(0.5, '#FFFFFF');
+      rodGradient.addColorStop(0.7, '#C0C0C0');
+      rodGradient.addColorStop(1, '#6B6B6B');
+      
+      // Draw rod (centered at origin after transform)
+      ctx.fillStyle = rodGradient;
+      ctx.beginPath();
+      ctx.roundRect(-rodTotalLength/2, -rodHeight/2, rodTotalLength, rodHeight, rodHeight/2);
+      ctx.fill();
+      
+      // Rod shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.15)';
+      ctx.beginPath();
+      ctx.ellipse(0, rodHeight * 0.8, rodTotalLength / 2, rodHeight * 0.25, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Finials (end caps)
+      const finialRadius = rodHeight * 0.8;
+      [-rodTotalLength/2, rodTotalLength/2].forEach((fx) => {
+        const finialGrad = ctx.createRadialGradient(fx - finialRadius*0.3, -finialRadius*0.3, 0, fx, 0, finialRadius);
+        finialGrad.addColorStop(0, '#FFFFFF');
+        finialGrad.addColorStop(0.5, '#C0C0C0');
+        finialGrad.addColorStop(1, '#707070');
+        ctx.fillStyle = finialGrad;
+        ctx.beginPath();
+        ctx.arc(fx, 0, finialRadius, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      
+      ctx.restore();
+
+      // === REALISM: Curtain Rings (follow top edge) ===
+      const numRings = 7;
+      const ringRadius = rodHeight * 0.6;
+      for (let i = 0; i < numRings; i++) {
+        const t = (i + 0.5) / numRings;
+        // Ring position on the fabric top edge
+        const fabricX = pTL.x + topDx * t;
+        const fabricY = pTL.y + topDy * t;
+        // Ring position on the rod (slightly above)
+        const ringX = fabricX;
+        const ringY = fabricY - rodHeight;
+        
+        // Ring body
+        ctx.strokeStyle = '#A0A0A0';
+        ctx.lineWidth = ringRadius * 0.3;
+        ctx.beginPath();
+        ctx.arc(ringX, ringY, ringRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Ring highlight
+        ctx.strokeStyle = '#E0E0E0';
+        ctx.lineWidth = ringRadius * 0.15;
+        ctx.beginPath();
+        ctx.arc(ringX, ringY, ringRadius, -Math.PI * 0.7 + topAngle, -Math.PI * 0.3 + topAngle);
+        ctx.stroke();
+        
+        // Clip connecting to fabric
+        ctx.strokeStyle = '#909090';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(ringX, ringY + ringRadius);
+        ctx.lineTo(fabricX, fabricY);
+        ctx.stroke();
+      }
+
+      // === REALISM: Weighted Hem ===
+      const hemHeight = Math.max(4, (pBL.y - pTL.y) * 0.015);
+      
+      // Hem shadow (below the fabric)
+      ctx.fillStyle = 'rgba(0,0,0,0.15)';
+      ctx.beginPath();
+      ctx.moveTo(pBL.x + 2, pBL.y + hemHeight);
+      ctx.lineTo(pBR.x + 2, pBR.y + hemHeight);
+      ctx.lineTo(pBR.x + 2, pBR.y + hemHeight * 2);
+      ctx.lineTo(pBL.x + 2, pBL.y + hemHeight * 2);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Hem line (darker fold)
+      const hemGradient = ctx.createLinearGradient(0, pBL.y - hemHeight, 0, pBL.y);
+      hemGradient.addColorStop(0, 'rgba(0,0,0,0)');
+      hemGradient.addColorStop(0.6, 'rgba(0,0,0,0.15)');
+      hemGradient.addColorStop(1, 'rgba(0,0,0,0.25)');
+      
+      ctx.fillStyle = hemGradient;
+      ctx.beginPath();
+      ctx.moveTo(pBL.x, pBL.y - hemHeight * 2);
+      ctx.lineTo(pBR.x, pBR.y - hemHeight * 2);
+      ctx.lineTo(pBR.x, pBR.y);
+      ctx.lineTo(pBL.x, pBL.y);
+      ctx.closePath();
+      ctx.fill();
+      
+      // Hem stitch line
+      ctx.strokeStyle = 'rgba(100,100,100,0.3)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(pBL.x + 5, pBL.y - hemHeight);
+      ctx.lineTo(pBR.x - 5, pBR.y - hemHeight);
+      ctx.stroke();
+      ctx.setLineDash([]);
     },
     [photoImage, fabricImg, points, fabric.translucency, toPixel]
   );
