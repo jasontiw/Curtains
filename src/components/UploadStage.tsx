@@ -23,9 +23,12 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
   const [photoImage, setPhotoImage] = useState<HTMLImageElement>();
   const [points, setPoints] = useState<Point[]>(defaultPoints());
   const [placingIndex, setPlacingIndex] = useState<number>(0);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragPoly, setDragPoly] = useState<{ start: Point; points: Point[] } | null>(null);
   const [fabricImg, setFabricImg] = useState<HTMLImageElement>();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number | null>(null);
 
   // Load fabric texture for 2D warp.
   useEffect(() => {
@@ -63,7 +66,14 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
   // Helper: convert normalized point to pixel.
   const toPixel = useCallback((p: Point, w: number, h: number) => ({ x: p.x * w, y: p.y * h }), []);
 
-  const renderComposite = useCallback(() => {
+  const clamp01 = useCallback((v: number) => Math.min(1, Math.max(0, v)), []);
+
+  const clampPoint = useCallback(
+    (p: Point) => ({ x: clamp01(p.x), y: clamp01(p.y) }),
+    [clamp01]
+  );
+
+  const renderCompositeImmediate = useCallback(() => {
     if (!photoImage || !fabricImg) {
       onComposite(undefined);
       return;
@@ -139,24 +149,80 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
     onComposite(canvas.toDataURL('image/png'));
   }, [fabricImg, fabric.translucency, onComposite, photoImage, points, toPixel]);
 
-  useEffect(() => {
-    renderComposite();
-  }, [renderComposite]);
+  const scheduleComposite = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      renderCompositeImmediate();
+    });
+  }, [renderCompositeImmediate]);
 
-  const onClickImage = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!photoImage || !overlayRef.current) return;
+  useEffect(() => {
+    scheduleComposite();
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [scheduleComposite]);
+
+  const setPointAtPos = useCallback(
+    (clientX: number, clientY: number, idx: number) => {
+      if (!overlayRef.current) return;
       const rect = overlayRef.current.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / rect.width;
-      const y = (e.clientY - rect.top) / rect.height;
+      const x = clamp01((clientX - rect.left) / rect.width);
+      const y = clamp01((clientY - rect.top) / rect.height);
       const next = [...points];
-      next[placingIndex] = { x, y };
-      const nextIndex = (placingIndex + 1) % 4;
+      next[idx] = { x, y };
       setPoints(next);
-      setPlacingIndex(nextIndex);
     },
-    [photoImage, placingIndex, points]
+    [clamp01, points]
   );
+
+  const onClickImage = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // Click ya no mueve puntos; solo arrastre.
+    e.preventDefault();
+  }, []);
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (dragIndex !== null) {
+        e.preventDefault();
+        setPointAtPos(e.clientX, e.clientY, dragIndex);
+        return;
+      }
+      if (dragPoly) {
+        e.preventDefault();
+        if (!overlayRef.current) return;
+        const rect = overlayRef.current.getBoundingClientRect();
+        const x = clamp01((e.clientX - rect.left) / rect.width);
+        const y = clamp01((e.clientY - rect.top) / rect.height);
+        const dx = x - dragPoly.start.x;
+        const dy = y - dragPoly.start.y;
+        const moved = dragPoly.points.map((p) => clampPoint({ x: p.x + dx, y: p.y + dy }));
+        setPoints(moved);
+        return;
+      }
+      e.preventDefault();
+    },
+    [clamp01, clampPoint, dragIndex, dragPoly, setPointAtPos]
+  );
+
+  const stopDrag = useCallback(() => {
+    setDragIndex(null);
+    setDragPoly(null);
+  }, []);
+
+  const isInsidePolygon = useCallback((pt: Point, poly: Point[]) => {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i].x;
+      const yi = poly[i].y;
+      const xj = poly[j].x;
+      const yj = poly[j].y;
+      const intersect = yi > pt.y !== yj > pt.y && pt.x < ((xj - xi) * (pt.y - yi)) / (yj - yi) + xi;
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }, []);
 
   const instructions = useMemo(() => {
     const names = ['Esquina superior izquierda', 'Esquina superior derecha', 'Esquina inferior derecha', 'Esquina inferior izquierda'];
@@ -194,6 +260,26 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
             <div
               ref={overlayRef}
               onClick={onClickImage}
+              onPointerMove={onPointerMove}
+              onPointerUp={stopDrag}
+              onPointerLeave={stopDrag}
+              onPointerDown={(e) => {
+                if (!overlayRef.current) return;
+                if (!photoUrl) return;
+                const rect = overlayRef.current.getBoundingClientRect();
+                const x = clamp01((e.clientX - rect.left) / rect.width);
+                const y = clamp01((e.clientY - rect.top) / rect.height);
+                const p = { x, y };
+                // if click is not on a handle, and is inside polygon, start polygon drag
+                const overHandle = points.some((pt) => {
+                  const dx = pt.x - p.x;
+                  const dy = pt.y - p.y;
+                  return dx * dx + dy * dy < 0.004; // ~2% radius squared
+                });
+                if (!overHandle && isInsidePolygon(p, points)) {
+                  setDragPoly({ start: p, points: points.slice() });
+                }
+              }}
               style={{ position: 'relative', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow)' }}
             >
               <img src={photoUrl} alt="Tu espacio" style={{ display: 'block', width: '100%' }} />
@@ -213,7 +299,21 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
                   />
                 )}
                 {points.map((p, idx) => (
-                  <circle key={idx} cx={p.x * 100} cy={p.y * 100} r={1.8} fill={idx === placingIndex ? '#4d7cf5' : '#ffffff'} stroke="#4d7cf5" strokeWidth={0.6} />
+                  <circle
+                    key={idx}
+                    cx={p.x * 100}
+                    cy={p.y * 100}
+                    r={2.4}
+                    fill={idx === placingIndex ? '#4d7cf5' : '#ffffff'}
+                    stroke="#4d7cf5"
+                    strokeWidth={0.8}
+                    style={{ cursor: 'grab' }}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                      setDragIndex(idx);
+                    }}
+                  />
                 ))}
               </svg>
             </div>
