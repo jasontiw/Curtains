@@ -88,16 +88,62 @@ function App() {
       >
         <div>
           <div className="pill" style={{ display: 'inline-flex', marginBottom: 10 }}>
-            Cortinas virtuales
+            ✨ Visualizador de cortinas
           </div>
-          <h1>Prueba cortinas en tu espacio</h1>
-          <p>
-            Elige entre sheers, lino, blackout o encaje. Prueba sobre la foto de tu ventana con efecto de brisa animada.
+          <h1>Visualiza tus cortinas antes de comprar</h1>
+          <p style={{ fontSize: 16, lineHeight: 1.6, marginBottom: 16, color: 'var(--ink)', opacity: 0.85 }}>
+            Sube una foto de tu ventana, selecciona la tela que más te guste y ve cómo lucirían las cortinas 
+            en tu espacio real — con efectos de pliegues, brisa animada y acabados decorativos.
           </p>
+          
+          <div style={{ 
+            display: 'flex', 
+            gap: 12, 
+            marginBottom: 20,
+            flexWrap: 'wrap'
+          }}>
+            {[
+              { num: '1', text: 'Sube foto de tu ventana', icon: '📷' },
+              { num: '2', text: 'Ajusta el área de cortina', icon: '✏️' },
+              { num: '3', text: 'Elige tela y accesorios', icon: '🎨' }
+            ].map((step) => (
+              <div 
+                key={step.num}
+                style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 8,
+                  background: 'rgba(77,124,245,0.08)',
+                  padding: '8px 14px',
+                  borderRadius: 20,
+                  fontSize: 13,
+                  fontWeight: 500
+                }}
+              >
+                <span style={{ 
+                  background: 'var(--accent)', 
+                  color: '#fff', 
+                  width: 22, 
+                  height: 22, 
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 12,
+                  fontWeight: 700
+                }}>
+                  {step.num}
+                </span>
+                <span>{step.icon} {step.text}</span>
+              </div>
+            ))}
+          </div>
+          
           <div className="badge-row">
             <span className="badge">7 estilos de tela</span>
-            <span className="badge">Animación de brisa</span>
-            <span className="badge">Pliegues realistas</span>
+            <span className="badge">5 materiales de barra</span>
+            <span className="badge">Brisa animada</span>
+            <span className="badge">Cenefa opcional</span>
           </div>
         </div>
         <CurtainScene fabric={activeFabric} />
