@@ -11,6 +11,7 @@ type Props = {
 const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
   const [breezeEnabled, setBreezeEnabled] = useState(false);
   const [pleatsEnabled, setPleatsEnabled] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [photoImage, setPhotoImage] = useState<HTMLImageElement>();
   const [fabricImg, setFabricImg] = useState<HTMLCanvasElement>();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -181,6 +182,23 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
 
   const hasPreview = photoUrl && points && points.length >= 4;
 
+  // Close fullscreen on Escape key
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsFullscreen(false);
+    };
+    if (isFullscreen) {
+      document.addEventListener('keydown', handleEsc);
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.removeEventListener('keydown', handleEsc);
+      document.body.style.overflow = '';
+    };
+  }, [isFullscreen]);
+
   return (
     <div className="surface" style={{ padding: 16 }}>
       <div className="section-header">
@@ -209,14 +227,51 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
               <span style={{ fontSize: 16 }}>🌬️</span>
               {breezeEnabled ? 'Brisa activa' : 'Activar brisa'}
             </button>
+            <button
+              className="selector-chip"
+              onClick={() => setIsFullscreen(true)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}
+            >
+              <span style={{ fontSize: 16 }}>⛶</span>
+              Ampliar
+            </button>
           </div>
           <canvas
             ref={canvasRef}
             style={{ 
               maxWidth: '100%', 
               borderRadius: 8, 
-              boxShadow: '0 2px 8px rgba(0,0,0,0.15)' 
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              cursor: 'pointer'
             }}
+            onClick={() => setIsFullscreen(true)}
+          />
+        </div>
+      )}
+
+      {/* Fullscreen modal */}
+      {isFullscreen && hasPreview && (
+        <div className="fullscreen-overlay" onClick={() => setIsFullscreen(false)}>
+          <button className="fullscreen-close" onClick={() => setIsFullscreen(false)}>✕</button>
+          <canvas
+            ref={(el) => {
+              if (el && canvasRef.current) {
+                const src = canvasRef.current;
+                const maxW = window.innerWidth * 0.92;
+                const maxH = window.innerHeight * 0.88;
+                const scale = Math.min(maxW / src.width, maxH / src.height, 2);
+                el.width = Math.round(src.width * scale);
+                el.height = Math.round(src.height * scale);
+                const ctx = el.getContext('2d');
+                if (ctx) {
+                  ctx.imageSmoothingEnabled = true;
+                  ctx.imageSmoothingQuality = 'high';
+                  ctx.drawImage(src, 0, 0, el.width, el.height);
+                }
+              }
+            }}
+            style={{ borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
+            onClick={(e) => e.stopPropagation()}
           />
         </div>
       )}
