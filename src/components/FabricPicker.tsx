@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 
 export type Fabric = {
   id: string;
@@ -7,6 +7,7 @@ export type Fabric = {
   textureUrl: string;
   tint: string;
   translucency: number; // 0-1 range
+  category: 'transparentes' | 'opacos' | 'decorativos';
 };
 
 type Props = {
@@ -15,32 +16,58 @@ type Props = {
   onSelect: (id: string) => void;
 };
 
+const categoryLabels: Record<Fabric['category'], { label: string; icon: string }> = {
+  transparentes: { label: 'Transparentes', icon: '☁️' },
+  opacos: { label: 'Opacos', icon: '🌑' },
+  decorativos: { label: 'Decorativos', icon: '✨' },
+};
+
 const FabricPicker: React.FC<Props> = ({ fabrics, activeId, onSelect }) => {
+  const grouped = useMemo(() => {
+    const groups: Record<Fabric['category'], Fabric[]> = {
+      transparentes: [],
+      opacos: [],
+      decorativos: [],
+    };
+    fabrics.forEach((f) => groups[f.category].push(f));
+    return groups;
+  }, [fabrics]);
+
   return (
-    <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-      {fabrics.map((fabric) => {
-        const active = fabric.id === activeId;
+    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+      {(Object.keys(grouped) as Fabric['category'][]).map((cat) => {
+        const items = grouped[cat];
+        if (items.length === 0) return null;
+        const { label, icon } = categoryLabels[cat];
         return (
-          <button
-            key={fabric.id}
-            className={`surface selector-chip ${active ? 'active' : ''}`}
-            onClick={() => onSelect(fabric.id)}
-            aria-pressed={active}
-          >
-            <div
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 12,
-                background: `linear-gradient(135deg, ${fabric.tint}22, ${fabric.tint}66)`,
-                border: '1px solid rgba(17,24,38,0.06)'
-              }}
-            />
-            <div style={{ textAlign: 'left' }}>
-              <div className="card-title">{fabric.name}</div>
-              <div className="card-copy" style={{ fontSize: 13 }}>{fabric.description}</div>
-            </div>
-          </button>
+          <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{icon} {label}:</span>
+            {items.map((fabric) => {
+              const active = fabric.id === activeId;
+              return (
+                <button
+                  key={fabric.id}
+                  className={`selector-chip ${active ? 'active' : ''}`}
+                  onClick={() => onSelect(fabric.id)}
+                  aria-pressed={active}
+                  title={fabric.description}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', fontSize: 13 }}
+                >
+                  <div
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 4,
+                      background: `linear-gradient(135deg, ${fabric.tint}66, ${fabric.tint}cc)`,
+                      border: '1px solid rgba(17,24,38,0.1)',
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span>{fabric.name.split(' ').slice(-1)[0]}</span>
+                </button>
+              );
+            })}
+          </div>
         );
       })}
     </div>

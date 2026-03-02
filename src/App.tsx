@@ -12,7 +12,8 @@ const fabrics: Fabric[] = [
     description: 'Luz filtrada, textura mínima',
     textureUrl: '/fabrics/sheer-soft.svg',
     tint: '#f1f5ff',
-    translucency: 0.62
+    translucency: 0.62,
+    category: 'transparentes'
   },
   {
     id: 'sheer-warm',
@@ -20,7 +21,8 @@ const fabrics: Fabric[] = [
     description: 'Calidez ligera con brisa',
     textureUrl: '/fabrics/sheer-warm.svg',
     tint: '#f8eddc',
-    translucency: 0.66
+    translucency: 0.66,
+    category: 'transparentes'
   },
   {
     id: 'sheer-gray',
@@ -28,7 +30,8 @@ const fabrics: Fabric[] = [
     description: 'Tono neutro elegante',
     textureUrl: '/fabrics/sheer-gray.svg',
     tint: '#e2e6ef',
-    translucency: 0.58
+    translucency: 0.58,
+    category: 'transparentes'
   },
   {
     id: 'linen-natural',
@@ -36,7 +39,8 @@ const fabrics: Fabric[] = [
     description: 'Textura rústica con fibras visibles',
     textureUrl: '/fabrics/linen-natural.svg',
     tint: '#e8e0d0',
-    translucency: 0.85
+    translucency: 0.85,
+    category: 'opacos'
   },
   {
     id: 'blackout-elegant',
@@ -44,7 +48,8 @@ const fabrics: Fabric[] = [
     description: 'Opaco con acabado satinado',
     textureUrl: '/fabrics/blackout-elegant.svg',
     tint: '#3a3a45',
-    translucency: 0.95
+    translucency: 0.95,
+    category: 'opacos'
   },
   {
     id: 'lace-romantic',
@@ -52,7 +57,8 @@ const fabrics: Fabric[] = [
     description: 'Patrón floral delicado',
     textureUrl: '/fabrics/lace-romantic.svg',
     tint: '#f8f4f0',
-    translucency: 0.55
+    translucency: 0.55,
+    category: 'decorativos'
   },
   {
     id: 'stripes-modern',
@@ -60,7 +66,8 @@ const fabrics: Fabric[] = [
     description: 'Líneas horizontales sutiles',
     textureUrl: '/fabrics/stripes-modern.svg',
     tint: '#e8eaed',
-    translucency: 0.75
+    translucency: 0.75,
+    category: 'decorativos'
   }
 ];
 
@@ -96,13 +103,12 @@ function App() {
         <CurtainScene fabric={activeFabric} />
       </motion.div>
 
-      <section className="grid" style={{ marginTop: 20 }}>
-        <div className="surface" style={{ padding: 16 }}>
-          <div className="section-header">
-            <h2>Elige tu tela</h2>
-            <span className="pill">7 estilos</span>
+      <section style={{ marginTop: 20 }}>
+        <div className="surface" style={{ padding: '12px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)' }}>Tela:</span>
+            <FabricPicker fabrics={fabrics} activeId={activeId} onSelect={setActiveId} />
           </div>
-          <FabricPicker fabrics={fabrics} activeId={activeId} onSelect={setActiveId} />
         </div>
       </section>
 
