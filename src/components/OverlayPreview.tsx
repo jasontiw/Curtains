@@ -532,15 +532,6 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
                 Cenefa
               </button>
             </div>
-
-            {/* Ampliar */}
-            <button
-              className="selector-chip"
-              onClick={() => setIsFullscreen(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 13, marginLeft: 'auto' }}
-            >
-              ⛶ Ampliar
-            </button>
           </div>
           <canvas
             ref={canvasRef}
