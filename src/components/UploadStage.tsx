@@ -199,20 +199,42 @@ const UploadStage: React.FC<Props> = ({ fabric, onPhotoChange, onPointsChange })
       </div>
       <div className="overlay-stage">
         <div>
-          <label htmlFor="photo-input" className="upload-drop" style={{ display: 'block', cursor: 'pointer' }}>
-            <input
-              id="photo-input"
-              type="file"
-              accept="image/*"
-              style={{ display: 'none' }}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFile(file);
-              }}
-            />
-            <div className="card-title">Arrastra o haz click</div>
-            <div className="card-copy">PNG/JPG, hasta 8MB. Marca las 4 esquinas de la ventana.</div>
-          </label>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <label htmlFor="photo-input" className="upload-drop" style={{ flex: 1, minWidth: 140, cursor: 'pointer' }}>
+              <input
+                id="photo-input"
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFile(file);
+                }}
+              />
+              <div style={{ fontSize: 24, marginBottom: 4 }}>📁</div>
+              <div className="card-title">Subir foto</div>
+              <div className="card-copy">PNG/JPG, hasta 8MB</div>
+            </label>
+            <label htmlFor="camera-input" className="upload-drop" style={{ flex: 1, minWidth: 140, cursor: 'pointer' }}>
+              <input
+                id="camera-input"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFile(file);
+                }}
+              />
+              <div style={{ fontSize: 24, marginBottom: 4 }}>📷</div>
+              <div className="card-title">Tomar foto</div>
+              <div className="card-copy">Usa la cámara</div>
+            </label>
+          </div>
+          <div className="card-copy" style={{ marginTop: 8, textAlign: 'center' }}>
+            Marca las 4 esquinas de la ventana.
+          </div>
         </div>
         <div>
           {photoUrl ? (

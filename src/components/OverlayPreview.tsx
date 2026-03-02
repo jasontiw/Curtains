@@ -15,7 +15,9 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
   const [photoImage, setPhotoImage] = useState<HTMLImageElement>();
   const [fabricImg, setFabricImg] = useState<HTMLCanvasElement>();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fullscreenCanvasRef = useRef<HTMLCanvasElement>(null);
   const breezeRef = useRef<number | null>(null);
+  const fullscreenSyncRef = useRef<number | null>(null);
   const timeRef = useRef<number>(0);
 
   // Load photo image
@@ -199,6 +201,51 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
     };
   }, [isFullscreen]);
 
+  // Sync fullscreen canvas with main canvas
+  useEffect(() => {
+    if (!isFullscreen) {
+      if (fullscreenSyncRef.current) {
+        cancelAnimationFrame(fullscreenSyncRef.current);
+        fullscreenSyncRef.current = null;
+      }
+      return;
+    }
+
+    const syncFullscreen = () => {
+      const src = canvasRef.current;
+      const dest = fullscreenCanvasRef.current;
+      if (src && dest) {
+        const maxW = window.innerWidth * 0.92;
+        const maxH = window.innerHeight * 0.88;
+        const scale = Math.min(maxW / src.width, maxH / src.height, 2);
+        const newW = Math.round(src.width * scale);
+        const newH = Math.round(src.height * scale);
+        
+        if (dest.width !== newW || dest.height !== newH) {
+          dest.width = newW;
+          dest.height = newH;
+        }
+        
+        const ctx = dest.getContext('2d');
+        if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(src, 0, 0, newW, newH);
+        }
+      }
+      fullscreenSyncRef.current = requestAnimationFrame(syncFullscreen);
+    };
+
+    fullscreenSyncRef.current = requestAnimationFrame(syncFullscreen);
+
+    return () => {
+      if (fullscreenSyncRef.current) {
+        cancelAnimationFrame(fullscreenSyncRef.current);
+        fullscreenSyncRef.current = null;
+      }
+    };
+  }, [isFullscreen]);
+
   return (
     <div className="surface" style={{ padding: 16 }}>
       <div className="section-header">
@@ -254,22 +301,7 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
         <div className="fullscreen-overlay" onClick={() => setIsFullscreen(false)}>
           <button className="fullscreen-close" onClick={() => setIsFullscreen(false)}>✕</button>
           <canvas
-            ref={(el) => {
-              if (el && canvasRef.current) {
-                const src = canvasRef.current;
-                const maxW = window.innerWidth * 0.92;
-                const maxH = window.innerHeight * 0.88;
-                const scale = Math.min(maxW / src.width, maxH / src.height, 2);
-                el.width = Math.round(src.width * scale);
-                el.height = Math.round(src.height * scale);
-                const ctx = el.getContext('2d');
-                if (ctx) {
-                  ctx.imageSmoothingEnabled = true;
-                  ctx.imageSmoothingQuality = 'high';
-                  ctx.drawImage(src, 0, 0, el.width, el.height);
-                }
-              }
-            }}
+            ref={fullscreenCanvasRef}
             style={{ borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
             onClick={(e) => e.stopPropagation()}
           />
