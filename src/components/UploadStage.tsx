@@ -16,9 +16,6 @@ const defaultPoints = (): Point[] => [
   { x: 0.28, y: 0.7 }
 ];
 
-const GRID_FULL = 36;
-const GRID_FAST = 10; // lower during drag for speed
-
 const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) => {
   const [photoUrl, setPhotoUrl] = useState<string>();
   const [photoImage, setPhotoImage] = useState<HTMLImageElement>();
@@ -30,7 +27,6 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
   const [fabricImg, setFabricImg] = useState<HTMLCanvasElement | HTMLImageElement>();
   const [isDragging, setIsDragging] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
   const pointsRef = useRef<Point[]>(points);
@@ -92,7 +88,7 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
   );
 
   const renderWarp = useCallback(
-    (targetCanvas: HTMLCanvasElement, gridSize: number, exportPng: boolean) => {
+    (targetCanvas: HTMLCanvasElement, exportPng: boolean) => {
       if (!photoImage || !fabricImg) {
         if (exportPng) onComposite(undefined);
         return;
@@ -149,11 +145,6 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
       
       const alpha = fabric.translucency;
 
-      // Debug: count pixels and track failed inversions
-      let pixelCount = 0;
-      let failedCount = 0;
-      let maxV = 0;
-
       // For each pixel in bounding box, check if inside quad and sample texture
       for (let py = minY; py < maxY; py++) {
         for (let px = minX; px < maxX; px++) {
@@ -174,12 +165,8 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
           }
           
           if (!uv || uv.u < 0 || uv.u > 1 || uv.v < 0 || uv.v > 1) {
-            failedCount++;
             continue;
           }
-          
-          pixelCount++;
-          if (uv.v > maxV) maxV = uv.v;
           
           // Sample fabric texture at (u,v)
           const srcX = Math.floor(uv.u * (sw - 1));
@@ -204,18 +191,6 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
       }
       
       ctx.putImageData(destData, minX, minY);
-      
-      // Debug output
-      console.log('Warp debug:', {
-        pixelCount,
-        failedCount,
-        maxV,
-        quad: { pTL, pTR, pBR, pBL },
-        bounds: { minX, maxX, minY, maxY },
-        canvasSize: { w, h },
-        imageNaturalSize: { width: photoImage.naturalWidth, height: photoImage.naturalHeight },
-        normalizedPoints: currentPoints
-      });
 
       if (exportPng) {
         onComposite(targetCanvas.toDataURL('image/png'));
@@ -228,14 +203,14 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
-      const canvas = previewCanvasRef.current ?? canvasRef.current;
-      if (canvas) renderWarp(canvas, GRID_FAST, false);
+      const canvas = canvasRef.current;
+      if (canvas) renderWarp(canvas, false);
     });
   }, [renderWarp]);
 
   const exportFinalComposite = useCallback(() => {
     const canvas = canvasRef.current;
-    if (canvas) renderWarp(canvas, GRID_FULL, true);
+    if (canvas) renderWarp(canvas, true);
   }, [renderWarp]);
 
   // Full quality export when points change and NOT dragging
@@ -453,10 +428,6 @@ const UploadStage: React.FC<Props> = ({ fabric, onComposite, onPhotoChange }) =>
   );
 };
 
-function lerp(a: number, b: number, t: number) {
-  return a + (b - a) * t;
-}
-
 // Check if a point is inside a quad using cross product signs
 // With tolerance for edge pixels
 function isPointInQuad(p: Point, tl: Point, tr: Point, br: Point, bl: Point): boolean {
@@ -474,40 +445,6 @@ function isPointInQuad(p: Point, tl: Point, tr: Point, br: Point, bl: Point): bo
   const hasPos = (d1 > eps) || (d2 > eps) || (d3 > eps) || (d4 > eps);
   
   return !(hasNeg && hasPos);
-}
-
-function lerpPoint(a: Point, b: Point, t: number): Point {
-  return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
-}
-
-function bilerp(p0: Point, p1: Point, p2: Point, p3: Point, u: number, v: number): Point {
-  // Bilinear interpolation over the quad: p0 (TL), p1 (TR), p2 (BR), p3 (BL)
-  const x =
-    p0.x * (1 - u) * (1 - v) +
-    p1.x * u * (1 - v) +
-    p2.x * u * v +
-    p3.x * (1 - u) * v;
-  const y =
-    p0.y * (1 - u) * (1 - v) +
-    p1.y * u * (1 - v) +
-    p2.y * u * v +
-    p3.y * (1 - u) * v;
-  return { x, y };
-}
-
-// Correct bilinear interpolation: TL at (0,0), TR at (1,0), BR at (1,1), BL at (0,1)
-function bilinearInterp(pTL: Point, pTR: Point, pBR: Point, pBL: Point, u: number, v: number): Point {
-  // Top edge: interpolate between TL and TR
-  const topX = pTL.x + (pTR.x - pTL.x) * u;
-  const topY = pTL.y + (pTR.y - pTL.y) * u;
-  // Bottom edge: interpolate between BL and BR
-  const botX = pBL.x + (pBR.x - pBL.x) * u;
-  const botY = pBL.y + (pBR.y - pBL.y) * u;
-  // Vertical interpolation
-  return {
-    x: topX + (botX - topX) * v,
-    y: topY + (botY - topY) * v
-  };
 }
 
 // Inverse bilinear interpolation: given a point p and quad corners, find (u,v)
@@ -683,104 +620,6 @@ function inverseBilinearNewton(
   }
   
   return null;
-}
-
-function drawTexturedTri(
-  ctx: CanvasRenderingContext2D,
-  img: CanvasImageSource,
-  s0: Point,
-  s1: Point,
-  s2: Point,
-  d0: Point,
-  d1: Point,
-  d2: Point,
-  alpha: number
-) {
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(d0.x, d0.y);
-  ctx.lineTo(d1.x, d1.y);
-  ctx.lineTo(d2.x, d2.y);
-  ctx.closePath();
-  ctx.clip();
-
-  // Compute affine transform: source triangle -> destination triangle
-  // Using the standard 2D affine mapping between two triangles
-  const denom = (s0.x - s2.x) * (s1.y - s2.y) - (s1.x - s2.x) * (s0.y - s2.y);
-  
-  if (Math.abs(denom) < 0.0001) {
-    ctx.restore();
-    return;
-  }
-
-  // Transform matrix components
-  const a = ((d0.x - d2.x) * (s1.y - s2.y) - (d1.x - d2.x) * (s0.y - s2.y)) / denom;
-  const b = ((d0.y - d2.y) * (s1.y - s2.y) - (d1.y - d2.y) * (s0.y - s2.y)) / denom;
-  const c = ((d1.x - d2.x) * (s0.x - s2.x) - (d0.x - d2.x) * (s1.x - s2.x)) / denom;
-  const d = ((d1.y - d2.y) * (s0.x - s2.x) - (d0.y - d2.y) * (s1.x - s2.x)) / denom;
-  const e = d2.x - a * s2.x - c * s2.y;
-  const f = d2.y - b * s2.x - d * s2.y;
-
-  ctx.setTransform(a, b, c, d, e, f);
-  ctx.globalAlpha = alpha;
-  ctx.drawImage(img, 0, 0);
-  ctx.restore();
-}
-
-// Draw a warped quad by splitting into two triangles
-function drawWarpedQuad(
-  ctx: CanvasRenderingContext2D,
-  img: CanvasImageSource,
-  srcX: number,
-  srcY: number,
-  srcW: number,
-  srcH: number,
-  q00: Point, // top-left dest
-  q10: Point, // top-right dest
-  q11: Point, // bottom-right dest
-  q01: Point, // bottom-left dest
-  alpha: number
-) {
-  // Source corners in texture space
-  const s00 = { x: srcX, y: srcY };                    // TL
-  const s10 = { x: srcX + srcW, y: srcY };             // TR
-  const s11 = { x: srcX + srcW, y: srcY + srcH };      // BR
-  const s01 = { x: srcX, y: srcY + srcH };             // BL
-  
-  // Split quad along TL-BR diagonal:
-  // Triangle 1: TL, TR, BR (upper-right triangle)
-  // Triangle 2: TL, BR, BL (lower-left triangle)
-  drawTexturedTri(ctx, img, s00, s10, s11, q00, q10, q11, alpha);
-  drawTexturedTri(ctx, img, s00, s11, s01, q00, q11, q01, alpha);
-}
-
-function computeAffineFromTri(s0: Point, s1: Point, s2: Point, d0: Point, d1: Point, d2: Point) {
-  const denom = s0.x * (s1.y - s2.y) + s1.x * (s2.y - s0.y) + s2.x * (s0.y - s1.y);
-
-  const a =
-    (d0.x * (s1.y - s2.y) + d1.x * (s2.y - s0.y) + d2.x * (s0.y - s1.y)) /
-    denom;
-  const b =
-    (d0.y * (s1.y - s2.y) + d1.y * (s2.y - s0.y) + d2.y * (s0.y - s1.y)) /
-    denom;
-  const c =
-    (d0.x * (s2.x - s1.x) + d1.x * (s0.x - s2.x) + d2.x * (s1.x - s0.x)) /
-    denom;
-  const d =
-    (d0.y * (s2.x - s1.x) + d1.y * (s0.x - s2.x) + d2.y * (s1.x - s0.x)) /
-    denom;
-  const e =
-    (d0.x * (s1.x * s2.y - s2.x * s1.y) +
-      d1.x * (s2.x * s0.y - s0.x * s2.y) +
-      d2.x * (s0.x * s1.y - s1.x * s0.y)) /
-    denom;
-  const f =
-    (d0.y * (s1.x * s2.y - s2.x * s1.y) +
-      d1.y * (s2.x * s0.y - s0.x * s2.y) +
-      d2.y * (s0.x * s1.y - s1.x * s0.y)) /
-    denom;
-
-  return { a, b, c, d, e, f };
 }
 
 export default UploadStage;
