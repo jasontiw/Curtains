@@ -1,0 +1,23 @@
+@media (max-width: 900px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+
+  .hero h1 {
+    font-size: 30px;
+  }
+
+  .range {
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .main-shell {
+    padding: 20px 14px 56px;
+  }
+
+  .section-header h2 {
+    font-size: 20px;
+  }
+}

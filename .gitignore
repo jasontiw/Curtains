@@ -1,0 +1,16 @@
+node_modules
+.dist
+.dist-ssr
+coverage
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.idea/
+.vscode/
+.DS_Store
+.env
+.env.*
+.svelte-kit
+%LOCALAPPDATA%/
+.npmrc
