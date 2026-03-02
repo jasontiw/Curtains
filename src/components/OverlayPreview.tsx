@@ -22,6 +22,7 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
   const [breezeEnabled, setBreezeEnabled] = useState(false);
   const [pleatsEnabled, setPleatsEnabled] = useState(true);
   const [showRod, setShowRod] = useState(true);
+  const [showValance, setShowValance] = useState(false);
   const [rodMaterial, setRodMaterial] = useState<RodMaterial>('metal');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [photoImage, setPhotoImage] = useState<HTMLImageElement>();
@@ -64,7 +65,7 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
   const toPixel = useCallback((p: Point, w: number, h: number) => ({ x: p.x * w, y: p.y * h }), []);
 
   const renderWarp = useCallback(
-    (time: number, showPleats: boolean, animateBreeze: boolean, displayRod: boolean, material: RodMaterial) => {
+    (time: number, showPleats: boolean, animateBreeze: boolean, displayRod: boolean, material: RodMaterial, displayValance: boolean) => {
       const canvas = canvasRef.current;
       if (!canvas || !photoImage || !fabricImg || !points || points.length < 4) return;
 
@@ -286,16 +287,82 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
       ctx.lineTo(pBR.x - 5, pBR.y - hemHeight);
       ctx.stroke();
       ctx.setLineDash([]);
+
+      // === REALISM: Valance (Cenefa) - Flat Modern Pelmet ===
+      if (displayValance && displayRod) {
+        const topDx = pTR.x - pTL.x;
+        const topDy = pTR.y - pTL.y;
+        const valanceHeight = Math.max(20, (pBL.y - pTL.y) * 0.09);
+        const rodH = Math.max(6, (pBL.y - pTL.y) * 0.02);
+        const valanceExtend = rodH * 2;
+        
+        // Calculate corners for the flat pelmet
+        const pelmetTopLeft = { x: pTL.x - valanceExtend, y: pTL.y - rodH * 1.5 };
+        const pelmetTopRight = { x: pTR.x + valanceExtend, y: pTR.y - rodH * 1.5 };
+        const pelmetBottomLeft = { x: pTL.x - valanceExtend, y: pTL.y - rodH * 1.5 + valanceHeight };
+        const pelmetBottomRight = { x: pTR.x + valanceExtend, y: pTR.y - rodH * 1.5 + valanceHeight };
+        
+        // Main fabric panel - smooth gradient for subtle depth
+        const fabricGrad = ctx.createLinearGradient(
+          pelmetTopLeft.x, pelmetTopLeft.y,
+          pelmetTopLeft.x, pelmetBottomLeft.y
+        );
+        fabricGrad.addColorStop(0, `${fabric.tint}cc`);
+        fabricGrad.addColorStop(0.3, `${fabric.tint}ee`);
+        fabricGrad.addColorStop(0.7, `${fabric.tint}dd`);
+        fabricGrad.addColorStop(1, `${fabric.tint}aa`);
+        
+        ctx.fillStyle = fabricGrad;
+        ctx.beginPath();
+        ctx.moveTo(pelmetTopLeft.x, pelmetTopLeft.y);
+        ctx.lineTo(pelmetTopRight.x, pelmetTopRight.y);
+        ctx.lineTo(pelmetBottomRight.x, pelmetBottomRight.y);
+        ctx.lineTo(pelmetBottomLeft.x, pelmetBottomLeft.y);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Top fold line (fabric only - darker shade)
+        const foldHeight = valanceHeight * 0.08;
+        ctx.fillStyle = `${fabric.tint}88`;
+        ctx.beginPath();
+        ctx.moveTo(pelmetTopLeft.x, pelmetTopLeft.y);
+        ctx.lineTo(pelmetTopRight.x, pelmetTopRight.y);
+        ctx.lineTo(pelmetTopRight.x, pelmetTopRight.y + foldHeight);
+        ctx.lineTo(pelmetTopLeft.x, pelmetTopLeft.y + foldHeight);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Bottom hem accent (fabric only - darker shade)
+        const hemHeight = valanceHeight * 0.06;
+        ctx.fillStyle = `${fabric.tint}77`;
+        ctx.beginPath();
+        ctx.moveTo(pelmetBottomLeft.x, pelmetBottomLeft.y - hemHeight);
+        ctx.lineTo(pelmetBottomRight.x, pelmetBottomRight.y - hemHeight);
+        ctx.lineTo(pelmetBottomRight.x, pelmetBottomRight.y);
+        ctx.lineTo(pelmetBottomLeft.x, pelmetBottomLeft.y);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Shadow below pelmet
+        ctx.fillStyle = 'rgba(0,0,0,0.12)';
+        ctx.beginPath();
+        ctx.moveTo(pelmetBottomLeft.x + 2, pelmetBottomLeft.y + 1);
+        ctx.lineTo(pelmetBottomRight.x + 2, pelmetBottomRight.y + 1);
+        ctx.lineTo(pelmetBottomRight.x + 2, pelmetBottomRight.y + 4);
+        ctx.lineTo(pelmetBottomLeft.x + 2, pelmetBottomLeft.y + 4);
+        ctx.closePath();
+        ctx.fill();
+      }
     },
-    [photoImage, fabricImg, points, fabric.translucency, toPixel]
+    [photoImage, fabricImg, points, fabric.translucency, fabric.tint, toPixel]
   );
 
   // Render static frame when not animating
   useEffect(() => {
     if (!breezeEnabled && photoImage && fabricImg && points) {
-      renderWarp(0, pleatsEnabled, false, showRod, rodMaterial);
+      renderWarp(0, pleatsEnabled, false, showRod, rodMaterial, showValance);
     }
-  }, [breezeEnabled, pleatsEnabled, showRod, rodMaterial, photoImage, fabricImg, points, renderWarp]);
+  }, [breezeEnabled, pleatsEnabled, showRod, rodMaterial, showValance, photoImage, fabricImg, points, renderWarp]);
 
   // Breeze animation loop
   useEffect(() => {
@@ -314,7 +381,7 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
       lastTime = currentTime;
       timeRef.current += delta * 0.5;
       
-      renderWarp(timeRef.current, pleatsEnabled, true, showRod, rodMaterial);
+      renderWarp(timeRef.current, pleatsEnabled, true, showRod, rodMaterial, showValance);
       breezeRef.current = requestAnimationFrame(animate);
     };
     
@@ -326,7 +393,7 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
         breezeRef.current = null;
       }
     };
-  }, [breezeEnabled, pleatsEnabled, showRod, rodMaterial, photoImage, fabricImg, points, renderWarp]);
+  }, [breezeEnabled, pleatsEnabled, showRod, rodMaterial, showValance, photoImage, fabricImg, points, renderWarp]);
 
   const hasPreview = photoUrl && points && points.length >= 4;
 
@@ -451,6 +518,19 @@ const OverlayPreview: React.FC<Props> = ({ photoUrl, points, fabric }) => {
                   />
                 </button>
               ))}
+            </div>
+
+            {/* Cenefa */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>🎀 Extra:</span>
+              <button
+                className={`selector-chip ${showValance ? 'active' : ''}`}
+                onClick={() => setShowValance(!showValance)}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px', fontSize: 13 }}
+                title="Cenefa con pliegues"
+              >
+                Cenefa
+              </button>
             </div>
 
             {/* Ampliar */}
