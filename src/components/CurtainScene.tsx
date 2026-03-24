@@ -3,6 +3,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { Environment, OrbitControls, MeshDistortMaterial, useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 import { Fabric } from './FabricPicker';
+import { useTheme } from '../contexts/ThemeContext';
 
 type ClothProps = {
   fabric: Fabric;
@@ -46,15 +47,23 @@ type SceneProps = {
 };
 
 const Scene: React.FC<SceneProps> = ({ fabric }) => {
+  const { theme } = useTheme();
+  
+  // Dark mode adjustments
+  const bgColor = theme === 'dark' ? [0.08, 0.09, 0.12] : [0.95, 0.97, 1];
+  const ambientIntensity = theme === 'dark' ? 0.4 : 0.65;
+  const mainLightIntensity = theme === 'dark' ? 1.0 : 1.4;
+  const fillLightIntensity = theme === 'dark' ? 0.25 : 0.45;
+
   return (
     <Canvas camera={{ position: [0, 0.9, 3.4], fov: 36 }} dpr={[1, 1.8]}>
-      <color attach="background" args={[0.95, 0.97, 1]} />
-      <ambientLight intensity={0.65} />
-      <directionalLight position={[2, 2.5, 2]} intensity={1.4} castShadow />
-      <directionalLight position={[-2, 1.5, -1]} intensity={0.45} />
+      <color attach="background" args={bgColor} />
+      <ambientLight intensity={ambientIntensity} />
+      <directionalLight position={[2, 2.5, 2]} intensity={mainLightIntensity} castShadow />
+      <directionalLight position={[-2, 1.5, -1]} intensity={fillLightIntensity} />
       <Suspense fallback={null}>
         <Cloth fabric={fabric} />
-        <Environment preset="city" />
+        <Environment preset={theme === 'dark' ? 'night' : 'city'} />
       </Suspense>
       <OrbitControls enablePan={false} enableZoom={false} minPolarAngle={Math.PI / 3} maxPolarAngle={Math.PI / 2} />
     </Canvas>

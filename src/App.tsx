@@ -4,6 +4,8 @@ import CurtainScene from './components/CurtainScene';
 import FabricPicker, { Fabric } from './components/FabricPicker';
 import UploadStage, { Point } from './components/UploadStage';
 import OverlayPreview from './components/OverlayPreview';
+import ThemeToggle from './components/ThemeToggle';
+import { ThemeProvider } from './contexts/ThemeContext';
 
 const fabrics: Fabric[] = [
   {
@@ -79,7 +81,16 @@ function App() {
   const activeFabric = useMemo(() => fabrics.find((f) => f.id === activeId) ?? fabrics[0], [activeId]);
 
   return (
-    <div className="main-shell">
+    <ThemeProvider>
+      <div className="main-shell">
+        {/* Header with theme toggle */}
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'flex-end', 
+          marginBottom: 16 
+        }}>
+          <ThemeToggle />
+        </div>
       <motion.div
         className="panel hero"
         initial={{ opacity: 0, y: 18 }}
@@ -178,6 +189,7 @@ function App() {
         </a>
       </footer>
     </div>
+    </ThemeProvider>
   );
 }
 

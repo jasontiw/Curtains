@@ -1,6 +1,7 @@
 node_modules
-.dist
-.dist-ssr
+.atl/
+dist/
+dist-ssr/
 coverage
 npm-debug.log*
 yarn-debug.log*
